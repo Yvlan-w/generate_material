@@ -23,18 +23,79 @@ export class AuthService {
   }
 
   /**
+   * 获取微信配置
+   * 在 server/.env 文件中设置：
+   * - WECHAT_APPID=你的小程序AppID
+   * - WECHAT_SECRET=你的小程序AppSecret
+   */
+  private getWechatConfig() {
+    const appId = process.env.WECHAT_APPID || '';
+    const secret = process.env.WECHAT_SECRET || '';
+    return { appId, secret };
+  }
+
+  /**
+   * 调用微信 API 获取真实 openid
+   * @param code 微信登录凭证
+   * @returns { openid, session_key } 或 null
+   */
+  private async getWechatOpenid(code: string): Promise<{ openid: string; session_key?: string } | null> {
+    const { appId, secret } = this.getWechatConfig();
+    
+    // 如果没有配置 AppID 和 Secret，使用模拟登录
+    if (!appId || !secret) {
+      console.log('[AuthService] 未配置微信凭证，使用模拟登录模式');
+      return {
+        openid: `dev_openid_${code.slice(0, 8)}`,
+        session_key: `dev_session_${Date.now()}`
+      };
+    }
+
+    // 调用微信 API 获取 openid
+    try {
+      const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+      console.log('[AuthService] 调用微信 API:', url.replace(secret, 'SECRET_HIDDEN'));
+      
+      const response = await fetch(url);
+      const data = await response.json() as any;
+      
+      console.log('[AuthService] 微信 API 响应:', { openid: data.openid, errcode: data.errcode, errmsg: data.errmsg });
+      
+      if (data.errcode && data.errcode !== 0) {
+        throw new Error(`微信登录失败: ${data.errmsg || '未知错误'}`);
+      }
+      
+      return {
+        openid: data.openid,
+        session_key: data.session_key
+      };
+    } catch (error) {
+      console.error('[AuthService] 调用微信 API 失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 微信登录：通过 code 换取 openid，并判断是否为管理员
-   * 注意：真实环境中需要调用微信 API，这里做模拟处理
+   * 
+   * 配置说明：
+   * 在 server/.env 文件中添加以下配置启用真实微信登录：
+   * WECHAT_APPID=你的小程序AppID
+   * WECHAT_SECRET=你的小程序AppSecret
+   * 
+   * 如果未配置，将使用模拟登录模式（开发测试用）
    */
   async wechatLogin(code: string, nickname?: string, avatar_url?: string): Promise<{ user: UserInfo; token: string }> {
     const client = this.getClient();
     
-    // 在真实环境中，需要调用微信 API 换取 openid:
-    // const response = await fetch(`https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${secret}&js_code=${code}&grant_type=authorization_code`)
-    // const data = await response.json() as WechatLoginResult
+    // 获取真实 openid
+    const wechatResult = await this.getWechatOpenid(code);
+    if (!wechatResult) {
+      throw new Error('微信登录失败，无法获取 openid');
+    }
     
-    // 开发环境：使用 code 作为模拟 openid（真实环境需要替换为微信 API 返回的 openid）
-    const openid = `dev_openid_${code.slice(0, 8)}`;
+    const openid = wechatResult.openid;
+    console.log('[AuthService] 用户 openid:', openid);
     
     // 查询用户
     const { data: existingUser, error: queryError } = await client
