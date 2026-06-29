@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
 import { Send, Bot, User, TriangleAlert, Check, LoaderCircle } from 'lucide-react-taro';
+import CustomTabBar from '@/components/CustomTabBar';
 import './index.css';
 
 /**
@@ -424,6 +425,9 @@ const IndexPage = () => {
           </Button>
         </View>
       </View>
+      
+      {/* 自定义 TabBar */}
+      <CustomTabBar />
     </View>
   );
 };

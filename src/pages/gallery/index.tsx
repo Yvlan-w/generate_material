@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Network } from '@/network';
 import Taro from '@tarojs/taro';
+import CustomTabBar from '@/components/CustomTabBar';
 import './index.css';
 
 // 定义图片项类型
@@ -201,6 +202,9 @@ const GalleryPage = () => {
           </Button>
         </View>
       )}
+
+      {/* 自定义 TabBar */}
+      <CustomTabBar />
     </View>
   );
 };
