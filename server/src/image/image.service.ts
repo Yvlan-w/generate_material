@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { LLMClient, ImageGenerationClient, Config } from 'coze-coding-dev-sdk';
+import { getSupabaseClient } from '../storage/database/supabase-client';
 
 /**
  * 对话状态定义
@@ -8,6 +9,7 @@ export type SessionStage = 'collecting' | 'compliance-checking' | 'generating' |
 
 export interface SessionData {
   sessionId: string;
+  userId?: string;  // 用户ID，用于关联生成的图片
   stage: SessionStage;
   messages: Array<{ role: string; content: string }>;
   structuredNeeds?: StructuredNeeds;
@@ -79,19 +81,25 @@ export class ImageService {
    * 多轮对话接口 - 需求收集Agent
    * 根据当前状态决定下一步行动
    */
-  async chat(sessionId: string, message: string, currentStage: SessionStage): Promise<ChatResponse> {
-    console.log(`[Chat] Session: ${sessionId}, Stage: ${currentStage}, Message: ${message}`);
+  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string): Promise<ChatResponse> {
+    console.log(`[Chat] Session: ${sessionId}, Stage: ${currentStage}, Message: ${message}, User: ${userId}`);
     
     // 获取或创建session数据
     let session = this.sessions.get(sessionId);
     if (!session) {
       session = {
         sessionId,
+        userId,
         stage: 'collecting',
         messages: [],
         collectedFields: new Set()
       };
       this.sessions.set(sessionId, session);
+    }
+    
+    // 更新 userId（如果之前没有设置）
+    if (userId && !session.userId) {
+      session.userId = userId;
     }
     
     // 记录用户消息
@@ -169,6 +177,9 @@ export class ImageService {
         // 生成图片
         const imageUrl = await this.generateImageFromPrompts(positivePrompt, negativePrompt);
         session.generatedImage = imageUrl;
+        
+        // 保存到数据库
+        await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, complianceResult);
         
         // 标记完成
         session.stage = 'completed';
@@ -475,49 +486,121 @@ export class ImageService {
   }
 
   /**
-   * 获取图片列表（保留原有功能）
+   * 获取图片列表 - 从数据库加载用户的生成记录
    */
-  async getImageList(filter?: string) {
-    console.log('[List] 获取图片列表, filter:', filter);
+  async getImageList(userId?: string, filter?: string) {
+    console.log('[List] 获取图片列表, userId:', userId, 'filter:', filter);
     
-    // 返回示例数据
-    const images = Array.from(this.generatedImages.entries()).map(([id, data]) => ({
-      id,
-      ...data
-    }));
-    
-    // 如果没有生成的图片，返回示例数据
-    if (images.length === 0) {
-      return [
-        {
-          id: 'img_001',
-          title: '专业品牌宣传图',
-          description: '蓝色主色调，团队协作场景',
-          style: '专业稳重',
-          status: '合规通过',
-          time: '2小时前',
-          url: 'https://coze-coding-project.tos.coze.site/generated/img_001.png'
-        },
-        {
-          id: 'img_002',
-          title: '数据可视化图表',
-          description: '现代简约风格，业绩展示',
-          style: '现代简约',
-          status: '合规通过',
-          time: '昨天',
-          url: 'https://coze-coding-project.tos.coze.site/generated/img_002.png'
-        }
-      ];
+    try {
+      // 获取 Supabase 客户端
+      const supabase = getSupabaseClient();
+      
+      // 从数据库查询图片
+      let query = supabase
+        .from('generated_images')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      // 如果指定了用户ID，只查询该用户的图片
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      
+      // 根据状态筛选
+      if (filter === 'compliant' || filter === '合规通过') {
+        query = query.eq('status', 'compliant');
+      } else if (filter === 'pending' || filter === '待审核') {
+        query = query.eq('status', 'pending');
+      }
+      
+      const { data, error } = await query.limit(50);
+      
+      if (error) {
+        console.error('[List] 数据库查询失败:', error);
+        // 返回空数组而不是模拟数据
+        return [];
+      }
+      
+      // 格式化返回数据
+      const images = (data || []).map(img => ({
+        id: img.id,
+        title: img.title || '营销素材',
+        description: img.description || '',
+        style: img.positive_prompt?.split(',')[0] || '',
+        status: img.status === 'compliant' ? '合规通过' : '待审核',
+        time: this.formatTime(img.created_at),
+        url: img.image_url,
+        prompt: img.prompt,
+        positive_prompt: img.positive_prompt,
+        negative_prompt: img.negative_prompt
+      }));
+      
+      console.log('[List] 查询到图片数量:', images.length);
+      return images;
+    } catch (e) {
+      console.error('[List] 查询异常:', e);
+      return [];
     }
+  }
+  
+  /**
+   * 格式化时间显示
+   */
+  private formatTime(dateStr: string): string {
+    if (!dateStr) return '未知时间';
     
-    // 根据筛选条件过滤
-    if (filter === 'compliant') {
-      return images.filter(img => img.status === '合规通过');
-    } else if (filter === 'pending') {
-      return images.filter(img => img.status === '待审核');
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffHours < 1) return '刚刚';
+    if (diffHours < 24) return `${diffHours}小时前`;
+    if (diffDays === 1) return '昨天';
+    if (diffDays < 7) return `${diffDays}天前`;
+    return date.toLocaleDateString('zh-CN');
+  }
+  
+  /**
+   * 保存图片到数据库
+   */
+  private async saveImageToDatabase(
+    session: SessionData,
+    imageUrl: string,
+    positivePrompt: string,
+    negativePrompt: string,
+    complianceResult: ComplianceResult
+  ): Promise<void> {
+    console.log('[Save] 保存图片到数据库, userId:', session.userId);
+    
+    try {
+      // 获取 Supabase 客户端
+      const supabase = getSupabaseClient();
+      
+      const { data, error } = await supabase
+        .from('generated_images')
+        .insert({
+          user_id: session.userId || null,
+          title: session.structuredNeeds?.theme || '营销素材',
+          description: session.structuredNeeds?.summary || '',
+          prompt: JSON.stringify(session.structuredNeeds),
+          positive_prompt: positivePrompt,
+          negative_prompt: negativePrompt,
+          image_url: imageUrl,
+          status: complianceResult.passed ? 'compliant' : 'pending',
+          compliance_note: complianceResult.passed ? null : complianceResult.violationAspects
+        })
+        .select();
+      
+      if (error) {
+        console.error('[Save] 保存失败:', error);
+      } else {
+        console.log('[Save] 保存成功, ID:', data?.[0]?.id);
+      }
+    } catch (e) {
+      console.error('[Save] 保存异常:', e);
     }
-    
-    return images;
   }
 
   /**

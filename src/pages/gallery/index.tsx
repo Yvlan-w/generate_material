@@ -10,7 +10,7 @@ import './index.css';
 
 // 定义图片项类型
 interface ImageItem {
-  id: number;
+  id: string;
   title: string;
   description: string;
   status: string;
@@ -26,9 +26,13 @@ const GalleryPage = () => {
   const [filter, setFilter] = useState('全部');
   const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // 筛选选项
   const filterOptions = ['全部', '合规通过', '待审核'];
+
+  // 获取用户信息
+  const userInfo = Taro.getStorageSync('userInfo') || {};
 
   // 加载图片列表
   useEffect(() => {
@@ -37,11 +41,16 @@ const GalleryPage = () => {
 
   const loadImages = async () => {
     setLoading(true);
+    setFailedImages(new Set()); // 清除失败记录
     try {
+      // 从数据库加载真实图片列表
       const response = await Network.request({
         url: '/api/image/list',
         method: 'GET',
-        data: { filter }
+        data: { 
+          userId: userInfo.id,
+          filter: filter === '全部' ? undefined : filter
+        }
       });
 
       console.log('图片列表响应:', response.data);
@@ -49,71 +58,30 @@ const GalleryPage = () => {
       if (response.data && response.data.code === 200 && response.data.data) {
         setImages(response.data.data.images || []);
       } else {
-        // 使用模拟数据
-        setImages([
-          {
-            id: 1,
-            title: '专业品牌宣传',
-            description: '团队协作场景',
-            status: '合规通过',
-            time: '今天',
-            url: 'https://images.unsplash.com/photo-1551434678-e076c9db5a46?w=400&h=400&fit=crop'
-          },
-          {
-            id: 2,
-            title: '数据可视化',
-            description: '业绩展示图表',
-            status: '合规通过',
-            time: '昨天',
-            url: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=400&fit=crop'
-          },
-          {
-            id: 3,
-            title: '现代办公',
-            description: '办公场景展示',
-            status: '合规通过',
-            time: '3天前',
-            url: 'https://images.unsplash.com/photo-1521737711867-e3b1e9e9e9e9?w=400&h=400&fit=crop'
-          },
-          {
-            id: 4,
-            title: '团队风采',
-            description: '投资咨询团队',
-            status: '待审核',
-            time: '5天前',
-            url: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=400&h=400&fit=crop'
-          }
-        ]);
+        setImages([]);
       }
     } catch (error) {
       console.error('加载图片失败:', error);
-      // 使用模拟数据
-      setImages([
-        {
-          id: 1,
-          title: '专业品牌宣传',
-          description: '团队协作场景',
-          status: '合规通过',
-          time: '今天',
-          url: 'https://images.unsplash.com/photo-1551434678-e076c9db5a46?w=400&h=400&fit=crop'
-        },
-        {
-          id: 2,
-          title: '数据可视化',
-          description: '业绩展示图表',
-          status: '合规通过',
-          time: '昨天',
-          url: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=400&fit=crop'
-        }
-      ]);
+      setImages([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // 处理图片加载失败
+  const handleImageError = (imageId: string) => {
+    console.log('图片加载失败:', imageId);
+    setFailedImages(prev => {
+      const newSet = new Set(prev);
+      newSet.add(imageId);  // 使用 imageId 参数
+      return newSet;
+    });
+  };
+
   // 处理图片点击
-  const handleImageClick = (_imageId: number) => {
+  const handleImageClick = (_imageId: string) => {
     // 跳转到微调页面，传递图片ID
+    // 未来可以用于查看图片详情：Taro.navigateTo({ url: `/pages/detail/index?id=${_imageId}` })
     Taro.switchTab({ url: '/pages/adjust/index' });
   };
 
@@ -153,8 +121,11 @@ const GalleryPage = () => {
             <Text className="text-sm text-on-surface-variant">加载中...</Text>
           </View>
         ) : images.length === 0 ? (
-          <View className="flex items-center justify-center h-32">
-            <Text className="text-sm text-on-surface-variant">暂无图片</Text>
+          <View className="flex flex-col items-center justify-center h-32">
+            <Text className="block text-sm text-on-surface-variant mb-2">暂无图片</Text>
+            <Text className="block text-xs text-on-surface-variant">
+              去首页生成您的第一张营销素材吧！
+            </Text>
           </View>
         ) : (
           <View className="grid grid-cols-2 gap-3">
@@ -166,11 +137,19 @@ const GalleryPage = () => {
               >
                 <CardContent className="p-0">
                   <View className="aspect-square bg-surface-container-high">
-                    <Image
-                      className="w-full h-full object-cover"
-                      src={image.url}
-                      mode="aspectFill"
-                    />
+                    {failedImages.has(image.id) ? (
+                      // 图片加载失败时显示占位
+                      <View className="w-full h-full flex items-center justify-center bg-gray-200">
+                        <Text className="block text-xs text-gray-500">图片加载失败</Text>
+                      </View>
+                    ) : (
+                      <Image
+                        className="w-full h-full object-cover"
+                        src={image.url}
+                        mode="aspectFill"
+                        onError={() => handleImageError(image.id)}
+                      />
+                    )}
                   </View>
                   <View className="p-3">
                     <Text className="block text-sm font-medium text-on-surface mb-1">{image.title}</Text>
@@ -198,7 +177,7 @@ const GalleryPage = () => {
             className="w-full bg-surface-container text-on-surface border-none"
             onClick={loadImages}
           >
-            <Text className="text-on-surface">加载更多</Text>
+            <Text className="text-on-surface">刷新列表</Text>
           </Button>
         </View>
       )}

@@ -61,3 +61,27 @@ export const generationParams = pgTable(
 		index("generation_params_is_active_idx").on(table.is_active),
 	]
 );
+
+// 生成的图片素材表
+export const generatedImages = pgTable(
+	"generated_images",
+	{
+		id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+		user_id: varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+		title: varchar("title", { length: 200 }),
+		description: text("description"),
+		prompt: text("prompt"),              // 用户原始需求
+		positive_prompt: text("positive_prompt"),  // 正向绘图提示词
+		negative_prompt: text("negative_prompt"),  // 逆向绘图提示词
+		image_url: varchar("image_url", { length: 500 }),  // TOS 图片 URL
+		status: varchar("status", { length: 20 }).default("pending").notNull(),  // pending/compliant/rejected
+		compliance_note: text("compliance_note"),  // 合规检查备注
+		created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updated_at: timestamp("updated_at", { withTimezone: true }),
+	},
+	(table) => [
+		index("generated_images_user_id_idx").on(table.user_id),
+		index("generated_images_status_idx").on(table.status),
+		index("generated_images_created_at_idx").on(table.created_at),
+	]
+);

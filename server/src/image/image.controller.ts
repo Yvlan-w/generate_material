@@ -19,13 +19,14 @@ export class ImageController {
    * └─ 通过 → 正负提示词 → 文生图 → 图片 + 需求 + 免责文案
    */
   @Post('chat')
-  async chat(@Body() body: { sessionId: string; message: string; stage: string }) {
+  async chat(@Body() body: { sessionId: string; message: string; stage: string; userId?: string }) {
     console.log('[API] Chat request:', body);
     
     const result = await this.imageService.chat(
       body.sessionId,
       body.message,
-      body.stage as any
+      body.stage as any,
+      body.userId
     );
     
     return {
@@ -87,10 +88,10 @@ export class ImageController {
    * GET /api/image/list
    */
   @Get('list')
-  async getImageList(@Query('filter') filter?: string) {
-    console.log('[API] List request, filter:', filter);
+  async getImageList(@Query('userId') userId?: string, @Query('filter') filter?: string) {
+    console.log('[API] List request, userId:', userId, 'filter:', filter);
     
-    const images = await this.imageService.getImageList(filter);
+    const images = await this.imageService.getImageList(userId, filter);
     
     return {
       code: 200,

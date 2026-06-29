@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, Image } from '@tarojs/components';
+import Taro from '@tarojs/taro';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +73,9 @@ const IndexPage = () => {
     setIsProcessing(true);
     
     try {
+      // 获取用户信息
+      const userInfo = Taro.getStorageSync('userInfo') || {};
+      
       // 调用对话API
       console.log('调用对话API:', {
         url: '/api/image/chat',
@@ -79,7 +83,8 @@ const IndexPage = () => {
         data: {
           sessionId: sessionState.sessionId,
           message: userMessage.content,
-          stage: sessionState.stage
+          stage: sessionState.stage,
+          userId: userInfo.id
         }
       });
       
@@ -89,7 +94,8 @@ const IndexPage = () => {
         data: {
           sessionId: sessionState.sessionId,
           message: userMessage.content,
-          stage: sessionState.stage
+          stage: sessionState.stage,
+          userId: userInfo.id
         }
       });
       
