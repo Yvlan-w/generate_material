@@ -1,28 +1,32 @@
-import { Controller, Post, Get, Body, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param } from '@nestjs/common';
 import { ImageService } from './image.service';
 
 /**
- * 图片生成接口
+ * 图片生成Controller
+ * 提供多轮对话式需求收集、合规检查、图片生成等API
  */
 @Controller('image')
 export class ImageController {
   constructor(private readonly imageService: ImageService) {}
 
   /**
-   * 图片生成接口
-   * POST /api/image/generate
+   * 多轮对话接口 - 需求收集Agent
+   * POST /api/image/chat
+   * 
+   * 流程：
+   * 用户提问 → 需求收集Agent → 结构化需求JSON → 合规校验
+   * ├─ 违规 → 返回拒绝提示 + 违规方面 + 改进建议 → 回到Agent
+   * └─ 通过 → 正负提示词 → 文生图 → 图片 + 需求 + 免责文案
    */
-  @Post('generate')
-  @HttpCode(HttpStatus.OK)
-  async generateImage(@Body() body: { userInput: string; style?: string }) {
-    console.log('图片生成请求:', body);
+  @Post('chat')
+  async chat(@Body() body: { sessionId: string; message: string; stage: string }) {
+    console.log('[API] Chat request:', body);
     
-    const result = await this.imageService.generateImage(
-      body.userInput,
-      body.style || '专业稳重'
+    const result = await this.imageService.chat(
+      body.sessionId,
+      body.message,
+      body.stage as any
     );
-    
-    console.log('图片生成响应:', result);
     
     return {
       code: 200,
@@ -32,25 +36,49 @@ export class ImageController {
   }
 
   /**
-   * 图片微调接口
-   * POST /api/image/adjust
+   * 获取对话历史
+   * GET /api/image/session/:id
    */
-  @Post('adjust')
-  @HttpCode(HttpStatus.OK)
-  async adjustImage(@Body() body: { imageId: string; params: any }) {
-    console.log('图片微调请求:', body);
+  @Get('session/:id')
+  async getSession(@Param('id') sessionId: string) {
+    console.log('[API] Get session:', sessionId);
     
-    const result = await this.imageService.adjustImage(
-      body.imageId,
-      body.params
-    );
-    
-    console.log('图片微调响应:', result);
+    const session = this.imageService.getSession(sessionId);
     
     return {
       code: 200,
       msg: 'success',
-      data: result
+      data: session || null
+    };
+  }
+
+  /**
+   * 图片生成接口（保留原有）
+   * POST /api/image/generate
+   */
+  @Post('generate')
+  async generateImage(@Body() body: { userInput: string; style?: string }) {
+    console.log('[API] Generate request:', body);
+    
+    // 使用对话流程模拟单轮生成
+    const sessionId = `single_${Date.now()}`;
+    const result = await this.imageService.chat(
+      sessionId,
+      `${body.userInput}，风格选择：${body.style || '专业稳重'}`,
+      'collecting'
+    );
+    
+    return {
+      code: 200,
+      msg: 'success',
+      data: {
+        imageUrl: result.generatedImage ?? '',
+        imageId: sessionId,
+        compliant: result.complianceResult?.passed ?? true,
+        message: result.reply,
+        parsedData: result.structuredNeeds ?? null,
+        complianceData: result.complianceResult ?? null
+      }
     };
   }
 
@@ -59,15 +87,34 @@ export class ImageController {
    * GET /api/image/list
    */
   @Get('list')
-  async getImages(@Query('filter') filter?: string) {
-    console.log('图片列表请求:', { filter });
+  async getImageList(@Query('filter') filter?: string) {
+    console.log('[API] List request, filter:', filter);
     
-    const result = await this.imageService.getImages(filter || '全部');
+    const images = await this.imageService.getImageList(filter);
     
     return {
       code: 200,
       msg: 'success',
-      data: { images: result }
+      data: {
+        images
+      }
+    };
+  }
+
+  /**
+   * 图片微调接口
+   * POST /api/image/adjust
+   */
+  @Post('adjust')
+  async adjustImage(@Body() body: { imageId: string; params: any }) {
+    console.log('[API] Adjust request:', body);
+    
+    const result = await this.imageService.adjustImage(body.imageId, body.params);
+    
+    return {
+      code: 200,
+      msg: 'success',
+      data: result
     };
   }
 }
