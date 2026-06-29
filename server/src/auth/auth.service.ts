@@ -1,3 +1,5 @@
+// 显式加载 dotenv，确保环境变量可用
+import 'dotenv/config';
 import { Injectable } from '@nestjs/common';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
@@ -42,24 +44,28 @@ export class AuthService {
   private async getWechatOpenid(code: string): Promise<{ openid: string; session_key?: string } | null> {
     const { appId, secret } = this.getWechatConfig();
     
-    // 如果没有配置 AppID 和 Secret，使用模拟登录
-    if (!appId || !secret) {
-      console.log('[AuthService] 未配置微信凭证，使用模拟登录模式');
+    // 判断是否为开发环境的模拟 code（H5 端无法获取真实微信凭证）
+    // 模拟 code 格式：test_h5_code 或 dev_openid_xxx
+    const isDevCode = code.startsWith('test_') || code.startsWith('dev_');
+    
+    // 如果是开发模式或未配置凭证，使用模拟登录
+    if (isDevCode || !appId || !secret) {
+      console.log('[AuthService] 使用模拟登录模式（开发环境或未配置微信凭证）');
       return {
-        openid: `dev_openid_${code.slice(0, 8)}`,
+        openid: isDevCode ? `dev_openid_${code.slice(0, 8)}` : `dev_openid_${code.slice(0, 8)}`,
         session_key: `dev_session_${Date.now()}`
       };
     }
 
-    // 调用微信 API 获取 openid
+    // 调用微信 API 获取 openid（小程序真实登录）
     try {
       const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
-      console.log('[AuthService] 调用微信 API:', url.replace(secret, 'SECRET_HIDDEN'));
+      console.log('[AuthService] 调用微信 API 获取真实 openid');
       
       const response = await fetch(url);
       const data = await response.json() as any;
       
-      console.log('[AuthService] 微信 API 响应:', { openid: data.openid, errcode: data.errcode, errmsg: data.errmsg });
+      console.log('[AuthService] 微信 API 响应:', { openid: data.openid ? '已获取' : undefined, errcode: data.errcode, errmsg: data.errmsg });
       
       if (data.errcode && data.errcode !== 0) {
         throw new Error(`微信登录失败: ${data.errmsg || '未知错误'}`);
