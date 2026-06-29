@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { View, Text, Image } from '@tarojs/components';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Network } from '@/network';
 import Taro from '@tarojs/taro';
+import { ImageOff, RefreshCw, Sparkles } from 'lucide-react-taro';
 import CustomTabBar from '@/components/CustomTabBar';
 import './index.css';
 
@@ -41,9 +40,8 @@ const GalleryPage = () => {
 
   const loadImages = async () => {
     setLoading(true);
-    setFailedImages(new Set()); // 清除失败记录
+    setFailedImages(new Set());
     try {
-      // 从数据库加载真实图片列表
       const response = await Network.request({
         url: '/api/image/list',
         method: 'GET',
@@ -73,111 +71,280 @@ const GalleryPage = () => {
     console.log('图片加载失败:', imageId);
     setFailedImages(prev => {
       const newSet = new Set(prev);
-      newSet.add(imageId);  // 使用 imageId 参数
+      newSet.add(imageId);
       return newSet;
     });
   };
 
   // 处理图片点击
   const handleImageClick = (_imageId: string) => {
-    // 跳转到微调页面，传递图片ID
-    // 未来可以用于查看图片详情：Taro.navigateTo({ url: `/pages/detail/index?id=${_imageId}` })
     Taro.switchTab({ url: '/pages/adjust/index' });
   };
 
+  // 获取筛选按钮样式
+  const getFilterButtonStyle = (option: string) => {
+    const isActive = filter === option;
+    return {
+      backgroundColor: isActive ? '#3B82F6' : '#F1F5F9',
+      color: isActive ? '#FFFFFF' : '#64748B',
+      borderRadius: '12px',
+      paddingLeft: '16px',
+      paddingRight: '16px',
+      paddingTop: '8px',
+                      paddingBottom: '8px',
+      fontSize: '14px',
+      fontWeight: isActive ? '600' : '400',
+      border: 'none'
+    };
+  };
+
   return (
-    <View className="flex flex-col h-full bg-background">
+    <View style={{
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '100vh',
+      backgroundColor: '#F8FAFC'
+    }}
+    >
       {/* 标题区域 */}
-      <View className="px-4 pt-6 pb-4">
-        <Text className="block text-xl font-bold text-on-surface mb-2">生成图片库</Text>
-        <Text className="block text-sm text-on-surface-variant">
+      <View style={{
+        paddingLeft: '20px',
+        paddingRight: '20px',
+        paddingTop: '24px',
+        paddingBottom: '16px',
+        backgroundColor: '#FFFFFF',
+        borderBottom: '1px solid #E2E8F0'
+      }}
+      >
+        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+          <Sparkles size={20} color="#3B82F6" style={{ marginRight: '8px' }} />
+          <Text style={{ fontSize: '20px', fontWeight: '700', color: '#1E293B' }}>
+            生成图片库
+          </Text>
+        </View>
+        <Text style={{
+          fontSize: '14px',
+          color: '#64748B',
+          marginTop: '8px'
+        }}
+        >
           查看和管理所有已生成的营销素材图片
         </Text>
       </View>
 
       {/* 筛选栏 */}
-      <View className="px-4 mb-6">
-        <View className="flex gap-2">
+      <View style={{
+        paddingLeft: '20px',
+        paddingRight: '20px',
+        paddingTop: '16px',
+          paddingBottom: '16px',
+        backgroundColor: '#FFFFFF'
+      }}
+      >
+        <View style={{ display: 'flex', flexDirection: 'row', gap: '12px' }}>
           {filterOptions.map((option) => (
-            <Button
+            <View
               key={option}
-              size="sm"
-              variant={filter === option ? 'default' : 'outline'}
-              className={filter === option 
-                ? 'bg-primary text-on-primary' 
-                : 'bg-surface-container text-on-surface border-none'}
+              style={getFilterButtonStyle(option)}
               onClick={() => setFilter(option)}
             >
-              {option}
-            </Button>
+              <Text style={{
+                fontSize: '14px',
+                color: filter === option ? '#FFFFFF' : '#64748B',
+                fontWeight: filter === option ? '600' : '400'
+              }}
+              >
+                {option}
+              </Text>
+            </View>
           ))}
         </View>
       </View>
 
       {/* 图片网格 */}
-      <View className="px-4 flex-1 overflow-y-auto">
+      <View style={{
+        paddingLeft: '16px',
+      paddingRight: '16px',
+        paddingTop: '16px',
+        flex: 1,
+        paddingBottom: '80px'
+      }}
+      >
         {loading ? (
-          <View className="flex items-center justify-center h-32">
-            <Text className="text-sm text-on-surface-variant">加载中...</Text>
+          <View style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '128px'
+          }}
+          >
+            <RefreshCw size={24} color="#64748B" className="animate-spin" />
+            <Text style={{
+              fontSize: '14px',
+              color: '#64748B',
+              marginLeft: '12px'
+            }}
+            >
+              加载中...
+            </Text>
           </View>
         ) : images.length === 0 ? (
-          <View className="flex flex-col items-center justify-center h-32">
-            <Text className="block text-sm text-on-surface-variant mb-2">暂无图片</Text>
-            <Text className="block text-xs text-on-surface-variant">
+          <View style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '200px',
+            backgroundColor: '#FFFFFF',
+            borderRadius: '16px',
+            border: '1px solid #E2E8F0'
+          }}
+          >
+            <ImageOff size={48} color="#94A3B8" />
+            <Text style={{
+              fontSize: '16px',
+              color: '#64748B',
+              marginTop: '16px'
+            }}
+            >
+              暂无图片
+            </Text>
+            <Text style={{
+              fontSize: '14px',
+              color: '#94A3B8',
+              marginTop: '8px'
+            }}
+            >
               去首页生成您的第一张营销素材吧！
             </Text>
           </View>
         ) : (
-          <View className="grid grid-cols-2 gap-3">
+          <View style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '12px'
+          }}
+          >
             {images.map((image) => (
-              <Card 
-                key={image.id} 
-                className="bg-surface-container shadow-md overflow-hidden"
+              <View 
+                key={image.id}
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                  border: '1px solid #E2E8F0'
+                }}
                 onClick={() => handleImageClick(image.id)}
               >
-                <CardContent className="p-0">
-                  <View className="aspect-square bg-surface-container-high">
-                    {failedImages.has(image.id) ? (
-                      // 图片加载失败时显示占位
-                      <View className="w-full h-full flex items-center justify-center bg-gray-200">
-                        <Text className="block text-xs text-gray-500">图片加载失败</Text>
-                      </View>
-                    ) : (
-                      <Image
-                        className="w-full h-full object-cover"
-                        src={image.url}
-                        mode="aspectFill"
-                        onError={() => handleImageError(image.id)}
-                      />
-                    )}
-                  </View>
-                  <View className="p-3">
-                    <Text className="block text-sm font-medium text-on-surface mb-1">{image.title}</Text>
-                    <View className="flex items-center gap-2">
-                      <Badge 
-                        variant={image.status === '合规通过' ? 'secondary' : 'outline'}
-                        className="text-xs"
+                <View style={{
+                  aspectRatio: '1',
+                  backgroundColor: '#F1F5F9',
+                  position: 'relative'
+                }}
+                >
+                  {failedImages.has(image.id) ? (
+                    <View style={{
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    >
+                      <ImageOff size={24} color="#94A3B8" />
+                      <Text style={{
+                        fontSize: '12px',
+                        color: '#94A3B8',
+                        marginTop: '8px'
+                      }}
+                      >
+                        图片加载失败
+                      </Text>
+                    </View>
+                  ) : (
+                    <Image
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }}
+                      src={image.url}
+                      mode="aspectFill"
+                      onError={() => handleImageError(image.id)}
+                    />
+                  )}
+                </View>
+                <View style={{ padding: '12px' }}>
+                  <Text style={{
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: '#1E293B',
+                    marginBottom: '8px'
+                  }}
+                  >
+                    {image.title}
+                  </Text>
+                  <View style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                  >
+                    <View style={{
+                      backgroundColor: image.status === '合规通过' ? '#D1FAE5' : '#FEF3C7',
+                      borderRadius: '8px',
+                      paddingLeft: '8px',
+                      paddingRight: '8px',
+                      paddingTop: '4px',
+                      paddingBottom: '4px'
+                    }}
+                    >
+                      <Text style={{
+                        fontSize: '12px',
+                        color: image.status === '合规通过' ? '#047857' : '#B45309',
+                        fontWeight: '500'
+                      }}
                       >
                         {image.status}
-                      </Badge>
-                      <Text className="text-xs text-on-surface-variant">{image.time}</Text>
+                      </Text>
                     </View>
+                    <Text style={{
+                      fontSize: '12px',
+                      color: '#94A3B8'
+                    }}
+                    >
+                      {image.time}
+                    </Text>
                   </View>
-                </CardContent>
-              </Card>
+                </View>
+              </View>
             ))}
           </View>
         )}
       </View>
 
-      {/* 加载更多 */}
+      {/* 刷新按钮 */}
       {images.length > 0 && (
-        <View className="px-4 py-4">
+        <View style={{
+          paddingLeft: '20px',
+        paddingRight: '20px',
+          paddingTop: '16px',
+          paddingBottom: '80px'
+        }}
+        >
           <Button
-            className="w-full bg-surface-container text-on-surface border-none"
+            style={{
+              width: '100%',
+              backgroundColor: '#F1F5F9',
+              borderRadius: '12px',
+              height: '44px'
+            }}
             onClick={loadImages}
           >
-            <Text className="text-on-surface">刷新列表</Text>
+            <RefreshCw size={16} color="#64748B" style={{ marginRight: '8px' }} />
+            <Text style={{ fontSize: '14px', color: '#64748B' }}>刷新列表</Text>
           </Button>
         </View>
       )}

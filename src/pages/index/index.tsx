@@ -3,11 +3,10 @@ import { View, Text, Image } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, Bot, User, TriangleAlert, Check, LoaderCircle } from 'lucide-react-taro';
+import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles } from 'lucide-react-taro';
 import CustomTabBar from '@/components/CustomTabBar';
 import './index.css';
 
@@ -20,7 +19,7 @@ interface Message {
   content: string;
   timestamp: Date;
   type?: 'text' | 'image' | 'compliance-result' | 'violation-warning';
-  data?: any; // 附加数据（如图片URL、合规详情）
+  data?: any;
 }
 
 /**
@@ -43,7 +42,7 @@ const IndexPage = () => {
     {
       id: 'init',
       role: 'agent',
-      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？例如：\n• 品牌宣传图\n• 团队风采展示\n• 数据可视化图表\n• 产品介绍海报',
+      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？\n\n例如：品牌宣传图、团队风采展示、数据可视化图表、产品介绍海报等。',
       timestamp: new Date(),
       type: 'text'
     }
@@ -73,10 +72,8 @@ const IndexPage = () => {
     setIsProcessing(true);
     
     try {
-      // 获取用户信息
       const userInfo = Taro.getStorageSync('userInfo') || {};
       
-      // 调用对话API
       console.log('调用对话API:', {
         url: '/api/image/chat',
         method: 'POST',
@@ -101,11 +98,9 @@ const IndexPage = () => {
       
       console.log('对话API响应:', response.data);
       
-      // 解析响应
       const { code, msg, data } = response.data;
       
       if (code === 200) {
-        // 更新对话状态
         setSessionState(prev => ({
           ...prev,
           stage: data.stage,
@@ -114,7 +109,6 @@ const IndexPage = () => {
           generatedImage: data.generatedImage
         }));
         
-        // 添加Agent回复消息
         if (data.reply) {
           const agentMessage: Message = {
             id: `msg_${Date.now()}_agent`,
@@ -127,12 +121,11 @@ const IndexPage = () => {
           setMessages(prev => [...prev, agentMessage]);
         }
         
-        // 如果有违规警告，添加警告消息
         if (data.stage === 'violation' && data.complianceResult) {
           const warningMessage: Message = {
             id: `msg_${Date.now()}_warning`,
             role: 'system',
-            content: `⚠️ 合规校验未通过\n\n违规方面：${data.complianceResult.violationAspects}\n\n改进建议：${data.complianceResult.suggestions}`,
+            content: `合规校验未通过\n\n违规方面：${data.complianceResult.violationAspects}\n\n改进建议：${data.complianceResult.suggestions}`,
             timestamp: new Date(),
             type: 'violation-warning',
             data: data.complianceResult
@@ -140,19 +133,17 @@ const IndexPage = () => {
           setMessages(prev => [...prev, warningMessage]);
         }
         
-        // 如果合规通过，添加合规通过消息
         if (data.stage === 'generating' && data.complianceResult?.passed) {
           const complianceMessage: Message = {
             id: `msg_${Date.now()}_compliance`,
             role: 'system',
-            content: '✅ 合规校验通过，正在生成图片...',
+            content: '合规校验通过，正在生成图片...',
             timestamp: new Date(),
             type: 'compliance-result'
           };
           setMessages(prev => [...prev, complianceMessage]);
         }
         
-        // 如果生成了图片，添加图片消息
         if (data.stage === 'completed' && data.generatedImage) {
           const imageMessage: Message = {
             id: `msg_${Date.now()}_image`,
@@ -169,7 +160,6 @@ const IndexPage = () => {
           setMessages(prev => [...prev, imageMessage]);
         }
       } else {
-        // 错误处理
         const errorMessage: Message = {
           id: `msg_${Date.now()}_error`,
           role: 'system',
@@ -214,18 +204,30 @@ const IndexPage = () => {
   // 获取阶段状态Badge
   const getStageBadge = () => {
     const stageConfig = {
-      collecting: { text: '需求收集', variant: 'secondary' },
-      'compliance-checking': { text: '合规校验', variant: 'outline' },
-      generating: { text: '图片生成', variant: 'outline' },
-      completed: { text: '已完成', variant: 'default' },
-      violation: { text: '需要优化', variant: 'destructive' }
+      collecting: { text: '需求收集', bg: '#E0F2FE', color: '#0369A1' },
+      'compliance-checking': { text: '合规校验', bg: '#FEF3C7', color: '#B45309' },
+      generating: { text: '图片生成', bg: '#DBEAFE', color: '#1E40AF' },
+      completed: { text: '已完成', bg: '#D1FAE5', color: '#047857' },
+      violation: { text: '需要优化', bg: '#FEE2E2', color: '#B91C1C' }
     };
     
     const config = stageConfig[sessionState.stage];
     return (
-      <Badge variant={config.variant as any} className="ml-2">
-        {config.text}
-      </Badge>
+      <View style={{
+        backgroundColor: config.bg,
+        color: config.color,
+        borderRadius: '12px',
+        paddingLeft: '12px',
+          paddingRight: '12px',
+        paddingTop: '4px',
+          paddingBottom: '4px',
+        marginLeft: '8px'
+      }}
+      >
+        <Text style={{ fontSize: '12px', color: config.color, fontWeight: '500' }}>
+          {config.text}
+        </Text>
+      </View>
     );
   };
 
@@ -233,15 +235,22 @@ const IndexPage = () => {
   const renderMessage = (message: Message) => {
     if (message.type === 'image') {
       return (
-        <Card className="mt-4">
-          <CardContent className="p-4">
+        <Card style={{
+          marginTop: '12px',
+          borderRadius: '16px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          border: 'none'
+        }}
+        >
+          <CardContent style={{ padding: '16px' }}>
             <Image 
               src={message.data?.imageUrl}
               className="w-full rounded-lg"
               mode="widthFix"
+              style={{ borderRadius: '12px' }}
             />
             {message.data?.needs && (
-              <View className="mt-4">
+              <View style={{ marginTop: '16px' }}>
                 <Text className="block text-sm font-semibold text-gray-700">
                   需求摘要：
                 </Text>
@@ -251,7 +260,13 @@ const IndexPage = () => {
               </View>
             )}
             {message.data?.disclaimer && (
-              <View className="mt-4 p-3 bg-gray-50 rounded">
+              <View style={{
+                marginTop: '12px',
+                padding: '12px',
+                backgroundColor: '#F8FAFC',
+                borderRadius: '8px'
+              }}
+              >
                 <Text className="block text-xs text-gray-500">
                   {message.data.disclaimer}
                 </Text>
@@ -264,58 +279,87 @@ const IndexPage = () => {
     
     if (message.type === 'violation-warning') {
       return (
-        <Card className="mt-4 bg-red-50 border-red-200">
-          <CardContent className="p-4">
-            <View className="flex items-center mb-2">
-              <TriangleAlert size={20} color="#DC2626" className="mr-2" />
-              <Text className="block text-sm font-semibold text-red-700">
-                合规校验未通过
-              </Text>
-            </View>
-            {message.data?.violationAspects && (
-              <Text className="block text-sm text-red-600 mt-2">
-                违规方面：{message.data.violationAspects}
-              </Text>
-            )}
-            {message.data?.suggestions && (
-              <Text className="block text-sm text-red-600 mt-2">
-                改进建议：{message.data.suggestions}
-              </Text>
-            )}
-          </CardContent>
-        </Card>
+        <View style={{
+          marginTop: '12px',
+          backgroundColor: '#FEF2F2',
+          borderRadius: '16px',
+          padding: '16px',
+          border: '1px solid #FECACA'
+        }}
+        >
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '8px' }}>
+            <TriangleAlert size={18} color="#DC2626" style={{ marginRight: '8px' }} />
+            <Text className="block text-sm font-semibold text-red-700">
+              合规校验未通过
+            </Text>
+          </View>
+          {message.data?.violationAspects && (
+            <Text className="block text-sm text-red-600 mt-2">
+              违规方面：{message.data.violationAspects}
+            </Text>
+          )}
+          {message.data?.suggestions && (
+            <Text className="block text-sm text-red-600 mt-2">
+              改进建议：{message.data.suggestions}
+            </Text>
+          )}
+        </View>
       );
     }
     
     if (message.type === 'compliance-result') {
       return (
-        <Card className="mt-4 bg-green-50 border-green-200">
-          <CardContent className="p-4">
-            <View className="flex items-center">
-              <Check size={20} color="#16A34A" className="mr-2" />
-              <Text className="block text-sm font-semibold text-green-700">
-                合规校验通过
-              </Text>
-            </View>
-          </CardContent>
-        </Card>
+        <View style={{
+          marginTop: '12px',
+          backgroundColor: '#F0FDF4',
+          borderRadius: '16px',
+          padding: '16px',
+          border: '1px solid #BBF7D0'
+        }}
+        >
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+            <Check size={18} color="#16A34A" style={{ marginRight: '8px' }} />
+            <Text className="block text-sm font-semibold text-green-700">
+              合规校验通过
+            </Text>
+          </View>
+        </View>
       );
     }
     
     return (
-      <Text className="block text-sm whitespace-pre-wrap">
+      <Text className="block text-sm whitespace-pre-wrap" style={{ lineHeight: '1.6' }}>
         {message.content}
       </Text>
     );
   };
 
   return (
-    <View className="flex flex-col h-screen bg-background">
+    <View style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      backgroundColor: '#F8FAFC'
+    }}
+    >
       {/* 顶部状态栏 */}
-      <View className="sticky top-0 bg-background border-b border-border px-4 py-3 z-10">
-        <View className="flex items-center justify-between">
-          <View className="flex items-center">
-            <Text className="text-lg font-semibold">
+      <View style={{
+        position: 'sticky',
+        top: 0,
+        backgroundColor: '#FFFFFF',
+        borderBottom: '1px solid #E2E8F0',
+        paddingLeft: '16px',
+          paddingRight: '16px',
+        paddingTop: '12px',
+          paddingBottom: '12px',
+        zIndex: 10,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+      }}
+      >
+        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+            <Sparkles size={20} color="#3B82F6" style={{ marginRight: '8px' }} />
+            <Text style={{ fontSize: '18px', fontWeight: '600', color: '#1E293B' }}>
               营销素材生成
             </Text>
             {getStageBadge()}
@@ -324,49 +368,73 @@ const IndexPage = () => {
             variant="outline" 
             size="sm"
             onClick={handleReset}
+            style={{
+              borderRadius: '12px',
+              backgroundColor: '#F1F5F9'
+            }}
           >
-            重新开始
+            <Text style={{ fontSize: '12px', color: '#64748B' }}>重新开始</Text>
           </Button>
         </View>
       </View>
 
       {/* 对话历史区域 */}
-      <ScrollArea className="flex-1 px-4 py-2">
+      <ScrollArea style={{ 
+        flex: 1, 
+        paddingLeft: '16px',
+          paddingRight: '16px', 
+        paddingTop: '16px',
+          paddingBottom: '160px'
+      }}
+      >
         {messages.map((message) => (
           <View 
             key={message.id}
-            className={`flex mb-4 ${
-              message.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
+            style={{
+              display: 'flex',
+              marginBottom: '16px',
+              justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start'
+            }}
           >
             <View 
-              className={`flex max-w-[80%] ${
-                message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-              }`}
+              style={{
+                display: 'flex',
+                maxWidth: '85%',
+                flexDirection: message.role === 'user' ? 'row-reverse' : 'row'
+              }}
             >
               {/* 角色图标 */}
               <View 
-                className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                  message.role === 'user' 
-                    ? 'bg-primary ml-2' 
-                    : 'bg-secondary mr-2'
-                }`}
+                style={{
+                  flexShrink: 0,
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: message.role === 'user' ? '#DBEAFE' : '#F1F5F9',
+                  marginLeft: message.role === 'user' ? '8px' : '0',
+                  marginRight: message.role === 'user' ? '0' : '8px'
+                }}
               >
                 {message.role === 'user' 
-                  ? <User size={16} color="#1E40AF" /> 
-                  : <Bot size={16} color="#6B7280" />
+                  ? <User size={18} color="#3B82F6" /> 
+                  : <Bot size={18} color="#64748B" />
                 }
               </View>
               
               {/* 消息内容 */}
               <View 
-                className={`rounded-lg p-3 ${
-                  message.role === 'user'
-                    ? 'bg-primary-container'
-                    : message.type === 'violation-warning'
-                    ? 'bg-transparent'
-                    : 'bg-secondary-container'
-                }`}
+                style={{
+                  borderRadius: '16px',
+                  padding: '12px 16px',
+                  backgroundColor: message.role === 'user'
+                    ? '#DBEAFE'
+                    : '#FFFFFF',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  border: message.role === 'user' ? 'none' : '1px solid #E2E8F0'
+                }}
               >
                 {renderMessage(message)}
               </View>
@@ -376,64 +444,99 @@ const IndexPage = () => {
         
         {/* 处理中状态 */}
         {isProcessing && (
-          <View className="flex justify-start mb-4">
-            <View className="flex items-center bg-secondary-container rounded-lg p-3">
-              <LoaderCircle size={16} color="#6B7280" className="mr-2 animate-spin" />
-              <Text className="block text-sm text-gray-600">
-                正在处理...
+          <View style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
+            <View style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              padding: '12px 16px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+              border: '1px solid #E2E8F0'
+            }}
+            >
+              <LoaderCircle size={18} color="#64748B" style={{ marginRight: '8px' }} className="animate-spin" />
+              <Text style={{ fontSize: '14px', color: '#64748B' }}>
+                正在思考...
               </Text>
             </View>
           </View>
         )}
       </ScrollArea>
 
-      {/* 底部输入区域 */}
+      {/* 底部固定区域：输入框 + TabBar */}
       <View 
         style={{
           position: 'fixed',
-          bottom: 50,
+          bottom: 0,
           left: 0,
           right: 0,
-          display: 'flex',
-          flexDirection: 'row',
-          gap: '8px',
-          padding: '12px',
-          backgroundColor: '#fff',
-          borderTop: '1px solid #e5e7eb',
-          zIndex: 100
+          zIndex: 500
         }}
       >
+        {/* 输入区域 */}
         <View 
           style={{
-            flex: 1,
-            backgroundColor: '#F3F4F6',
-            borderRadius: '20px',
-            padding: '8px 12px'
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '16px',
+            paddingBottom: '72px',
+            backgroundColor: '#FFFFFF',
+            borderTop: '1px solid #E2E8F0',
+            boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
           }}
         >
-          <Input
-            style={{ width: '100%', fontSize: '14px' }}
-            placeholder={sessionState.stage === 'violation' 
-              ? '请根据建议优化您的需求...' 
-              : '请描述您的图片需求...'}
-            value={inputValue}
-            onInput={(e) => setInputValue(e.detail.value)}
-            disabled={isProcessing}
-          />
-        </View>
-        <View style={{ flexShrink: 0 }}>
-          <Button
-            size="default"
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || isProcessing}
+          <View 
+            style={{
+              flex: 1,
+              backgroundColor: '#F1F5F9',
+              borderRadius: '24px',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center'
+            }}
           >
-            <Send size={16} color="#fff" />
-          </Button>
+            <Input
+              style={{ 
+                width: '100%', 
+                fontSize: '16px',
+                backgroundColor: 'transparent'
+              }}
+              placeholder={sessionState.stage === 'violation' 
+                ? '请根据建议优化您的需求...' 
+                : '请描述您的图片需求...'}
+              value={inputValue}
+              onInput={(e) => setInputValue(e.detail.value)}
+              disabled={isProcessing}
+              placeholderStyle="color: #94A3B8"
+            />
+          </View>
+          <View style={{ flexShrink: 0 }}>
+            <Button
+              size="default"
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim() || isProcessing}
+              style={{
+                borderRadius: '24px',
+                paddingLeft: '24px',
+                paddingRight: '24px',
+                height: '44px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Send size={18} color="#fff" />
+            </Button>
+          </View>
         </View>
+        
+        {/* 自定义 TabBar */}
+        <CustomTabBar />
       </View>
-      
-      {/* 自定义 TabBar */}
-      <CustomTabBar />
     </View>
   );
 };

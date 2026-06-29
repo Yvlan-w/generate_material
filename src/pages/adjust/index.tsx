@@ -1,13 +1,10 @@
 import { useState, useEffect } from 'react';
 import { View, Text } from '@tarojs/components';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Network } from '@/network';
 import Taro from '@tarojs/taro';
+import { Settings, Save, RefreshCw, Info, LoaderCircle } from 'lucide-react-taro';
 import CustomTabBar from '@/components/CustomTabBar';
 import './index.css';
 
@@ -21,13 +18,6 @@ interface ParamConfig {
   description: string;
   is_active: boolean;
 }
-
-const qualityOptions = [
-  { value: 1, label: 'Draft (草稿)' },
-  { value: 2, label: 'Standard (标准)' },
-  { value: 3, label: 'High (高)' },
-  { value: 4, label: 'Ultra (超高)' }
-];
 
 const AdjustPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -80,7 +70,6 @@ const AdjustPage = () => {
       if (response.data.code === 200) {
         setParams(response.data.data);
         
-        // 初始化修改参数记录
         const initialModified: Record<string, number> = {};
         response.data.data.forEach((param: ParamConfig) => {
           initialModified[param.param_name] = param.param_value;
@@ -108,7 +97,6 @@ const AdjustPage = () => {
     try {
       setSaving(true);
       
-      // 逐个更新参数
       for (const [paramName, value] of Object.entries(modifiedParams)) {
         const param = params.find(p => p.param_name === paramName);
         if (param && param.param_value !== value) {
@@ -121,8 +109,6 @@ const AdjustPage = () => {
       }
 
       Taro.showToast({ title: '保存成功', icon: 'success' });
-      
-      // 重新获取参数
       fetchParams();
     } catch (error) {
       console.error('保存参数失败:', error);
@@ -148,89 +134,130 @@ const AdjustPage = () => {
     const hasMin = param.param_min !== null;
     const hasMax = param.param_max !== null;
 
-    // 特殊处理质量等级（使用 Select）
-    if (param.param_name === 'quality_level') {
-      return (
-        <Card key={param.id} className="mb-4">
-          <CardHeader className="pb-2">
-            <View className="flex flex-row justify-between items-center">
-              <CardTitle className="text-lg">{param.param_name}</CardTitle>
-              <Text className="text-primary font-semibold">
-                {qualityOptions.find(o => o.value === currentValue)?.label || currentValue}
-              </Text>
-            </View>
-            <CardDescription className="text-sm text-on-surface-variant">
-              {param.description}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-2">
-            <View className="flex flex-row items-center gap-4">
-              <Label className="text-sm">选择质量等级</Label>
-              <Select
-                value={currentValue.toString()}
-                onValueChange={(value) => handleParamChange(param.param_name, parseInt(value))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择质量等级" />
-                </SelectTrigger>
-                <SelectContent>
-                  {qualityOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value.toString()}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </View>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    // 一般参数使用 Slider
     return (
-      <Card key={param.id} className="mb-4">
-        <CardHeader className="pb-2">
-          <View className="flex flex-row justify-between items-center">
-            <CardTitle className="text-lg">{param.param_name}</CardTitle>
-            <Text className="text-primary font-semibold">
+      <View 
+        key={param.id}
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          padding: '16px',
+          marginBottom: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          border: '1px solid #E2E8F0'
+        }}
+      >
+        {/* 参数标题 */}
+        <View style={{
+          display: 'flex',
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '8px'
+        }}
+        >
+          <Text style={{
+            fontSize: '16px',
+            fontWeight: '600',
+            color: '#1E293B'
+          }}
+          >
+            {param.param_name}
+          </Text>
+          <View style={{
+            backgroundColor: '#DBEAFE',
+            borderRadius: '8px',
+            paddingLeft: '12px',
+            paddingRight: '12px',
+            paddingTop: '4px',
+            paddingBottom: '4px'
+          }}
+          >
+            <Text style={{
+              fontSize: '14px',
+              fontWeight: '600',
+              color: '#3B82F6'
+            }}
+            >
               {currentValue}{param.param_unit ? ` ${param.param_unit}` : ''}
             </Text>
           </View>
-          <CardDescription className="text-sm text-on-surface-variant">
-            {param.description}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-2">
-          {hasMin && hasMax ? (
-            <View className="flex flex-col gap-2">
-              <Slider
-                value={[currentValue]}
-                min={param.param_min!}
-                max={param.param_max!}
-                step={param.param_name === 'temperature' ? 0.1 : 1}
-                onValueChange={(value) => handleParamChange(param.param_name, value[0])}
-                className="w-full"
-              />
-              <View className="flex flex-row justify-between text-xs text-on-surface-variant">
-                <Text>{param.param_min}{param.param_unit ? ` ${param.param_unit}` : ''}</Text>
-                <Text>{param.param_max}{param.param_unit ? ` ${param.param_unit}` : ''}</Text>
-              </View>
+        </View>
+        
+        {/* 参数描述 */}
+        <Text style={{
+          fontSize: '13px',
+          color: '#64748B',
+          marginBottom: '12px'
+        }}
+        >
+          {param.description}
+        </Text>
+        
+        {/* 滑块 */}
+        {hasMin && hasMax ? (
+          <View>
+            <Slider
+              value={[currentValue]}
+              min={param.param_min!}
+              max={param.param_max!}
+              step={param.param_name === 'temperature' ? 0.1 : 1}
+              onValueChange={(value) => handleParamChange(param.param_name, value[0])}
+              className="w-full"
+            />
+            <View style={{
+              display: 'flex',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              marginTop: '8px'
+            }}
+            >
+              <Text style={{ fontSize: '12px', color: '#94A3B8' }}>
+                {param.param_min}{param.param_unit ? ` ${param.param_unit}` : ''}
+              </Text>
+              <Text style={{ fontSize: '12px', color: '#94A3B8' }}>
+                {param.param_max}{param.param_unit ? ` ${param.param_unit}` : ''}
+              </Text>
             </View>
-          ) : (
-            <Text className="text-on-surface-variant text-sm">此参数不可调整范围</Text>
-          )}
-        </CardContent>
-      </Card>
+          </View>
+        ) : (
+          <Text style={{ fontSize: '12px', color: '#94A3B8' }}>
+            此参数不可调整范围
+          </Text>
+        )}
+      </View>
     );
   };
 
   // 非管理员显示
   if (!isAdmin) {
     return (
-      <View className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-        <Text className="text-xl text-on-surface mb-4">权限验证中...</Text>
-        <Text className="text-sm text-on-surface-variant">正在检查管理员权限</Text>
+      <View style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#F8FAFC',
+        padding: '16px'
+      }}
+      >
+        <LoaderCircle size={32} color="#64748B" className="animate-spin" />
+        <Text style={{
+          fontSize: '16px',
+          color: '#64748B',
+          marginTop: '16px'
+        }}
+        >
+          权限验证中...
+        </Text>
+        <Text style={{
+          fontSize: '14px',
+          color: '#94A3B8',
+          marginTop: '8px'
+        }}
+        >
+          正在检查管理员权限
+        </Text>
       </View>
     );
   }
@@ -238,68 +265,164 @@ const AdjustPage = () => {
   // 加载中
   if (loading) {
     return (
-      <View className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-        <Text className="text-xl text-on-surface mb-4">加载参数配置...</Text>
+      <View style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#F8FAFC',
+        padding: '16px'
+      }}
+      >
+        <Settings size={32} color="#3B82F6" />
+        <Text style={{
+          fontSize: '16px',
+          color: '#64748B',
+          marginTop: '16px'
+        }}
+        >
+          加载参数配置...
+        </Text>
       </View>
     );
   }
 
   return (
-    <View className="flex flex-col min-h-screen bg-background pb-16">
+    <View style={{
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '100vh',
+      backgroundColor: '#F8FAFC',
+      paddingBottom: '80px'
+    }}
+    >
       {/* 页面标题 */}
-      <View className="px-4 py-6 bg-surface-container-low">
-        <Text className="block text-2xl font-bold text-primary mb-2">参数配置</Text>
-        <Text className="block text-sm text-on-surface-variant">
+      <View style={{
+        paddingLeft: '20px',
+        paddingRight: '20px',
+        paddingTop: '24px',
+        paddingBottom: '16px',
+        backgroundColor: '#FFFFFF',
+        borderBottom: '1px solid #E2E8F0'
+      }}
+      >
+        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+          <Settings size={20} color="#3B82F6" style={{ marginRight: '8px' }} />
+          <Text style={{ fontSize: '20px', fontWeight: '700', color: '#1E293B' }}>
+            参数配置
+          </Text>
+        </View>
+        <Text style={{
+          fontSize: '14px',
+          color: '#64748B',
+          marginTop: '8px'
+        }}
+        >
           调整 AI 生成参数，优化图片生成效果
         </Text>
       </View>
 
-      <Separator className="my-2" />
-
       {/* 参数列表 */}
-      <View className="px-4 py-4">
-        <Text className="block text-lg font-semibold text-on-surface mb-4">
+      <View style={{
+        paddingLeft: '16px',
+        paddingRight: '16px',
+        paddingTop: '16px',
+        flex: 1
+      }}
+      >
+        <Text style={{
+          fontSize: '16px',
+          fontWeight: '600',
+          color: '#1E293B',
+          marginBottom: '12px'
+        }}
+        >
           当前配置
         </Text>
 
         {params.map(param => renderParamItem(param))}
       </View>
 
-      <Separator className="my-2" />
-
       {/* 操作按钮 */}
-      <View className="px-4 py-4">
-        <View className="flex flex-col gap-3">
-          <Button
-            className="w-full bg-primary text-on-primary"
-            onClick={handleSaveAll}
-            disabled={saving}
-          >
-            <Text className="text-on-primary">{saving ? '保存中...' : '保存配置'}</Text>
-          </Button>
-          
-          <Button
-            className="w-full bg-surface-container text-on-surface"
-            onClick={handleReset}
-            variant="outline"
-          >
-            <Text className="text-on-surface">重置为当前值</Text>
-          </Button>
-        </View>
+      <View style={{
+        paddingLeft: '20px',
+        paddingRight: '20px',
+        paddingTop: '16px',
+        paddingBottom: '16px'
+      }}
+      >
+        <Button
+          style={{
+            width: '100%',
+            backgroundColor: '#3B82F6',
+            borderRadius: '12px',
+            height: '44px',
+            marginBottom: '12px'
+          }}
+          onClick={handleSaveAll}
+          disabled={saving}
+        >
+          {saving ? (
+            <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+              <LoaderCircle size={16} color="#FFFFFF" className="animate-spin" />
+              <Text style={{ color: '#FFFFFF', fontSize: '14px', marginLeft: '8px' }}>保存中...</Text>
+            </View>
+          ) : (
+            <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+              <Save size={16} color="#FFFFFF" style={{ marginRight: '8px' }} />
+              <Text style={{ color: '#FFFFFF', fontSize: '14px' }}>保存配置</Text>
+            </View>
+          )}
+        </Button>
+        
+        <Button
+          style={{
+            width: '100%',
+            backgroundColor: '#F1F5F9',
+            borderRadius: '12px',
+            height: '44px'
+          }}
+          onClick={handleReset}
+          variant="outline"
+        >
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+            <RefreshCw size={16} color="#64748B" style={{ marginRight: '8px' }} />
+            <Text style={{ color: '#64748B', fontSize: '14px' }}>重置为当前值</Text>
+          </View>
+        </Button>
       </View>
 
       {/* 参数说明 */}
-      <View className="px-4 py-4 bg-surface-container-lowest">
-        <Text className="block text-sm text-on-surface-variant mb-2">
-          参数说明：
-        </Text>
-        <Text className="block text-xs text-on-surface-variant">
-          • Temperature: 控制生成结果的创意性，值越高越随机创意，值越低越稳定一致{'\n'}
-          • Style Strength: 控制图片风格化程度{'\n'}
-          • Iteration Count: 图片生成迭代次数，影响细节精细度{'\n'}
-          • Quality Level: 图片质量等级，影响最终输出质量{'\n'}
-          • Diversity: 多样性参数，控制生成结果的多样性
-        </Text>
+      <View style={{
+        paddingLeft: '20px',
+        paddingRight: '20px',
+        paddingTop: '16px',
+        paddingBottom: '16px',
+        backgroundColor: '#FFFFFF',
+        borderTop: '1px solid #E2E8F0'
+      }}
+      >
+        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '12px' }}>
+          <Info size={16} color="#64748B" style={{ marginRight: '8px' }} />
+          <Text style={{ fontSize: '14px', fontWeight: '600', color: '#64748B' }}>
+            参数说明
+          </Text>
+        </View>
+        <View style={{
+          backgroundColor: '#F1F5F9',
+          borderRadius: '12px',
+          padding: '12px'
+        }}
+        >
+          <Text style={{ fontSize: '12px', color: '#64748B', lineHeight: '1.6' }}>
+            • Temperature: 控制生成结果的创意性{'\n'}
+            • Style Strength: 控制图片风格化程度{'\n'}
+            • Iteration Count: 图片生成迭代次数{'\n'}
+            • Quality Level: 图片质量等级{'\n'}
+            • Diversity: 多样性参数
+          </Text>
+        </View>
       </View>
 
       {/* 自定义 TabBar */}

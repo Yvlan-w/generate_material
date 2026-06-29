@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { View, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Network } from '@/network'
+import { Sparkles, ShieldCheck, LoaderCircle } from 'lucide-react-taro'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
@@ -74,62 +74,206 @@ export default function LoginPage() {
   }
 
   return (
-    <View className="flex flex-col min-h-screen bg-gradient-to-br from-blue-50 to-blue-100">
+    <View style={{
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '100vh',
+      backgroundColor: '#F8FAFC'
+    }}
+    >
       {/* Logo 区域 */}
-      <View className="flex flex-col items-center justify-center pt-20 pb-8">
-        <View className="w-24 h-24 rounded-full bg-blue-600 flex items-center justify-center mb-4">
-          <Text className="text-white text-4xl font-bold">AI</Text>
+      <View style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: '80px',
+        paddingBottom: '40px'
+      }}
+      >
+        <View style={{
+          width: '80px',
+          height: '80px',
+          borderRadius: '50%',
+          backgroundColor: '#3B82F6',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 8px 24px rgba(59,130,246,0.3)',
+          marginBottom: '24px'
+        }}
+        >
+          <Sparkles size={40} color="#FFFFFF" />
         </View>
-        <Text className="block text-2xl font-bold text-blue-900 mb-2">营销素材生成平台</Text>
-        <Text className="block text-sm text-blue-600">投资咨询行业专属</Text>
+        <Text style={{
+          fontSize: '24px',
+          fontWeight: '700',
+          color: '#1E293B',
+          marginBottom: '8px'
+        }}
+        >
+          营销素材生成平台
+        </Text>
+        <Text style={{
+          fontSize: '14px',
+          color: '#64748B',
+          backgroundColor: '#DBEAFE',
+          borderRadius: '8px',
+          paddingLeft: '12px',
+            paddingRight: '12px',
+          paddingTop: '4px',
+            paddingBottom: '4px'
+        }}
+        >
+          投资咨询行业专属
+        </Text>
       </View>
 
       {/* 登录卡片 */}
-      <View className="flex-1 px-6 pb-12">
-        <Card className="mx-auto max-w-sm">
-          <CardHeader className="text-center">
-            <CardTitle className="text-xl">用户登录</CardTitle>
-            <CardDescription className="text-sm">
-              登录后可使用图片生成功能
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* 登录按钮 */}
-            <Button
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-              onClick={handleLogin}
-              disabled={loading}
+      <View style={{
+        flex: 1,
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        paddingBottom: '48px'
+      }}
+      >
+        <View style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: '24px',
+          padding: '32px',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+          border: '1px solid #E2E8F0',
+          maxWidth: '320px',
+          margin: '0 auto'
+        }}
+        >
+          {/* 标题 */}
+          <View style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <Text style={{
+              fontSize: '20px',
+              fontWeight: '600',
+              color: '#1E293B'
+            }}
             >
-              <View className="flex items-center justify-center">
-                <Text className="text-white font-medium">
-                  {loading ? '登录中...' : (isMiniApp ? '微信授权登录' : '测试登录（H5开发模式）')}
+              用户登录
+            </Text>
+            <Text style={{
+              fontSize: '14px',
+              color: '#64748B',
+              marginTop: '8px'
+            }}
+            >
+              登录后可使用图片生成功能
+            </Text>
+          </View>
+
+          {/* 登录按钮 */}
+          <Button
+            style={{
+              width: '100%',
+              backgroundColor: '#3B82F6',
+              borderRadius: '16px',
+              height: '52px',
+              boxShadow: '0 4px 12px rgba(59,130,246,0.3)'
+            }}
+            onClick={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <View style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center'
+              }}
+              >
+                <LoaderCircle size={20} color="#FFFFFF" className="animate-spin" />
+                <Text style={{
+                  color: '#FFFFFF',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  marginLeft: '8px'
+                }}
+                >
+                  登录中...
                 </Text>
               </View>
-            </Button>
+            ) : (
+              <View style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center'
+              }}
+              >
+                <ShieldCheck size={20} color="#FFFFFF" style={{ marginRight: '8px' }} />
+                <Text style={{
+                  color: '#FFFFFF',
+                  fontSize: '16px',
+                  fontWeight: '500'
+                }}
+                >
+                  {isMiniApp ? '微信授权登录' : '测试登录（H5模式）'}
+                </Text>
+              </View>
+            )}
+          </Button>
 
-            {/* 提示信息 */}
-            <View className="text-center space-y-2">
-              <Text className="block text-xs text-gray-500">
-                {isMiniApp 
-                  ? '点击按钮将获取微信授权并登录' 
-                  : '当前为H5开发模式，点击按钮模拟登录'}
-              </Text>
-              {!isMiniApp && (
-                <Text className="block text-xs text-orange-500">
+          {/* 提示信息 */}
+          <View style={{
+            textAlign: 'center',
+            marginTop: '20px'
+          }}
+          >
+            <Text style={{
+              fontSize: '12px',
+              color: '#94A3B8'
+            }}
+            >
+              {isMiniApp 
+                ? '点击按钮将获取微信授权并登录' 
+                : '当前为H5开发模式，点击按钮模拟登录'}
+            </Text>
+            {!isMiniApp && (
+              <View style={{
+                backgroundColor: '#FEF3C7',
+                borderRadius: '8px',
+                padding: '12px',
+                marginTop: '12px'
+              }}
+              >
+                <Text style={{
+                  fontSize: '12px',
+                  color: '#B45309'
+                }}
+                >
                   提示：微信登录功能仅在小程序中可用
                 </Text>
-              )}
-            </View>
-          </CardContent>
-        </Card>
+              </View>
+            )}
+          </View>
+        </View>
       </View>
 
       {/* 底部信息 */}
-      <View className="text-center pb-8 px-6">
-        <Text className="block text-xs text-gray-400">
+      <View style={{
+        textAlign: 'center',
+        paddingBottom: '32px',
+        paddingLeft: '24px',
+        paddingRight: '24px'
+      }}
+      >
+        <Text style={{
+          fontSize: '12px',
+          color: '#94A3B8'
+        }}
+        >
           登录即表示您同意我们的服务条款和隐私政策
         </Text>
-        <Text className="block text-xs text-gray-400 mt-2">
+        <Text style={{
+          fontSize: '12px',
+          color: '#CBD5E1',
+          marginTop: '8px'
+        }}
+        >
           © 2024 投资咨询营销素材生成平台
         </Text>
       </View>

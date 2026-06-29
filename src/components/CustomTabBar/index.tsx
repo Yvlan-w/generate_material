@@ -68,11 +68,12 @@ const CustomTabBar = () => {
       flexDirection: 'row',
       justifyContent: 'space-around',
       alignItems: 'center',
-      height: '50px',
+      height: '60px',
       backgroundColor: '#FFFFFF',
       borderTop: '1px solid #E5E7EB',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      zIndex: 999
+      paddingBottom: '10px',
+      boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
+      zIndex: 1000
     }}
     >
       {tabs.map((tab, index) => {
