@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://lf-code-agent.coze.cn/obj/x-ai-cn/cdn/jquery/jquery-3.7.1.min.js"></script>
+  <script src="https://lf-code-agent.coze.cn/obj/x-ai-cn/cdn/lucide/lucide-1.11.0.min.js"></script>
+  <script src="https://lf-code-agent.coze.cn/obj/x-ai-cn/cdn/tailwindcss/tailwindcss-browser-4.2.4.min.js"></script>
+
+  <style type="text/tailwindcss">
+    @theme {
+      --color-primary:              #1E40AF;
+      --color-primary-container:    #DBEAFE;
+      --color-on-primary:           #ffffff;
+      --color-background:                 #FFFFFF;
+      --color-surface-container-lowest:   #FFFFFF;
+      --color-surface:                    #FFFFFF;
+      --color-surface-container:          #F3F4F6;
+      --color-surface-container-high:     #E5E7EB;
+      --color-surface-container-highest:  #D1D5DB;
+      --color-on-surface:           #1F2937;
+      --color-on-surface-variant:   #6B7280;
+      --color-success:  #22c55e;
+      --color-error:    #ef4444;
+      --color-warning:  #f59e0b;
+      --color-outline:          #D1D5DB;
+      --color-outline-variant:  #E5E7EB;
+      --radius-sm:   0.25rem;
+      --radius-md:   0.375rem;
+      --radius-lg:   0.5rem;
+      --radius-xl:   0.75rem;
+      --radius-2xl:  1rem;
+      --radius-full: 9999px;
+      --shadow-card:   0 4px 12px rgba(0,0,0,0.08);
+      --shadow-float:  0 10px 25px rgba(0,0,0,0.12);
+      --shadow-dialog: 0 25px 50px rgba(0,0,0,0.16);
+      --font-sans: "Inter", "Noto Sans SC", system-ui, sans-serif;
+    }
+  </style>
+
+  <style>
+    body {
+      min-height: max(812px, 100dvh);
+      font-family: system-ui, sans-serif;
+    }
+    /* 滑块样式 */
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--color-surface-container-high);
+      border-radius: 9999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      background: var(--color-primary);
+      border-radius: 9999px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+  </style>
+
+  <script>
+    document.addEventListener('error', function (e) {
+      const img = e.target;
+      if (img.tagName !== 'IMG' || img.dataset.fallback) return;
+      img.dataset.fallback = '1';
+      const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const cat = img.getAttribute('data-category') || '其他';
+      const alt = img.getAttribute('alt') || '';
+      const label = esc(alt.length > 8 ? alt.slice(0, 8) + '…' : alt);
+      const icons = { '人物': '👤', '自然风景': '🏞', '动物': '🐾', '建筑城市': '🏙', '运动体育': '⚽', '交通工具': '🚗', '食物': '🍽', '服饰时尚': '👗', '商业科技': '💼', '游戏娱乐': '🎮', '艺术': '🎨', '其他': '🖼' };
+      const icon = icons[cat] || '🖼';
+      const w = img.width || 400, h = img.height || 300;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="%23f3f4f6"/><text x="50%" y="45%" text-anchor="middle" font-size="${Math.min(w, h) * 0.18}" dominant-baseline="central">${icon}</text><text x="50%" y="68%" text-anchor="middle" font-size="${Math.min(w, h) * 0.07}" fill="%239ca3af" font-family="system-ui,sans-serif" dominant-baseline="central">${label}</text></svg>`;
+      img.src = 'data:image/svg+xml,' + svg;
+    }, true);
+  </script>
+</head>
+
+<body class="bg-background text-on-surface font-sans">
+
+  <!-- 顶部 Header -->
+  <header class="bg-background sticky top-0 z-40 h-14 flex items-center justify-between px-4">
+    <div class="w-10 h-10 flex items-center justify-center text-on-surface-variant">
+      <i data-lucide="sparkles" class="w-5 h-5"></i>
+    </div>
+    <h1 class="text-base font-semibold text-on-surface">AI营销素材生成</h1>
+    <button class="w-10 h-10 flex items-center justify-center text-on-surface-variant rounded-full
+                   hover:bg-surface-container active:bg-surface-container-high transition-colors">
+      <i data-lucide="settings" class="w-5 h-5"></i>
+    </button>
+  </header>
+
+  <!-- 底部 TabBar -->
+  <nav class="fixed bottom-0 left-0 right-0 z-40 bg-surface
+              flex justify-around items-center h-14 pb-[env(safe-area-inset-bottom)]">
+    <a href="home.html" class="flex flex-col items-center gap-0.5 px-5 py-1.5 text-on-surface-variant
+                       hover:text-on-surface transition-colors">
+      <i data-lucide="home" class="w-5 h-5"></i>
+      <span class="text-[10px] font-bold tracking-wide">首页</span>
+    </a>
+    <a href="gallery.html" class="flex flex-col items-center gap-0.5 px-5 py-1.5 text-on-surface-variant
+                       hover:text-on-surface transition-colors">
+      <i data-lucide="image" class="w-5 h-5"></i>
+      <span class="text-[10px] font-bold tracking-wide">图库</span>
+    </a>
+    <a href="adjust.html" class="flex flex-col items-center gap-0.5 px-5 py-1.5 text-primary"
+       aria-current="page">
+      <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+      <span class="text-[10px] font-bold tracking-wide">微调</span>
+    </a>
+  </nav>
+
+  <main class="flex-1 overflow-y-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))]">
+    <!-- 微调内容 -->
+    <div class="px-4 py-6">
+      <!-- 标题区域 -->
+      <div class="mb-6">
+        <h2 class="text-xl font-bold text-on-surface mb-2">参数微调</h2>
+        <p class="text-sm text-on-surface-variant">调整生成参数，优化图片效果（开发人员专用）</p>
+      </div>
+
+      <!-- 图片预览 -->
+      <div class="bg-surface-container rounded-xl p-4 mb-6 shadow-card">
+        <div class="aspect-video bg-surface-container-high rounded-lg flex items-center justify-center mb-4">
+          <img src="https://images.unsplash.com/photo-1551434678-e076c9db5a46?w=800&h=450&fit=crop" 
+               alt="当前图片预览" data-category="商业科技" class="w-full h-full object-cover rounded-lg">
+        </div>
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-on-surface">专业品牌宣传图</p>
+          <button class="px-3 py-1.5 bg-primary-container text-primary rounded-lg text-sm font-medium
+                         hover:bg-primary hover:text-on-primary transition-colors">
+            查看详情
+          </button>
+        </div>
+      </div>
+
+      <!-- 风格参数 -->
+      <div class="mb-6">
+        <h3 class="text-base font-semibold text-on-surface mb-4 flex items-center gap-2">
+          <i data-lucide="palette" class="w-4 h-4 text-primary"></i>
+          风格参数
+        </h3>
+        
+        <!-- 风格强度 -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-medium text-on-surface">风格强度</label>
+            <span class="text-sm text-on-surface-variant">75%</span>
+          </div>
+          <input type="range" min="0" max="100" value="75" class="w-full">
+          <div class="flex justify-between text-xs text-on-surface-variant mt-1">
+            <span>保守</span>
+            <span>激进</span>
+          </div>
+        </div>
+
+        <!-- 风格类型选择 -->
+        <div class="mb-4">
+          <label class="text-sm font-medium text-on-surface mb-2 block">风格类型</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="px-3 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium">
+              专业稳重
+            </button>
+            <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium">
+              现代简约
+            </button>
+            <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium">
+              科技感
+            </button>
+            <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium">
+              温暖亲和
+            </button>
+          </div>
+        </div>
+
+        <!-- 艺术感程度 -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-medium text-on-surface">艺术感程度</label>
+            <span class="text-sm text-on-surface-variant">30%</span>
+          </div>
+          <input type="range" min="0" max="50" value="30" class="w-full">
+          <div class="flex justify-between text-xs text-on-surface-variant mt-1">
+            <span>商业感</span>
+            <span>艺术感</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 视觉参数 -->
+      <div class="mb-6">
+        <h3 class="text-base font-semibold text-on-surface mb-4 flex items-center gap-2">
+          <i data-lucide="sun" class="w-4 h-4 text-primary"></i>
+          视觉参数
+        </h3>
+
+        <!-- 色调倾向 -->
+        <div class="mb-4">
+          <label class="text-sm font-medium text-on-surface mb-2 block">色调倾向</label>
+          <div class="flex gap-2">
+            <button class="px-3 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium">
+              蓝灰色
+            </button>
+            <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium">
+              暖橙色
+            </button>
+            <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium">
+              中性灰
+            </button>
+          </div>
+        </div>
+
+        <!-- 亮度 -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-medium text-on-surface">亮度</label>
+            <span class="text-sm text-on-surface-variant">+10</span>
+          </div>
+          <input type="range" min="-50" max="50" value="10" class="w-full">
+        </div>
+
+        <!-- 对比度 -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-medium text-on-surface">对比度</label>
+            <span class="text-sm text-on-surface-variant">+20</span>
+          </div>
+          <input type="range" min="-50" max="50" value="20" class="w-full">
+        </div>
+
+        <!-- 饱和度 -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-medium text-on-surface">饱和度</label>
+            <span class="text-sm text-on-surface-variant">+15</span>
+          </div>
+          <input type="range" min="-50" max="50" value="15" class="w-full">
+        </div>
+
+        <!-- 色温 -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-medium text-on-surface">色温</label>
+            <span class="text-sm text-on-surface-variant">40%</span>
+          </div>
+          <input type="range" min="0" max="100" value="40" class="w-full">
+          <div class="flex justify-between text-xs text-on-surface-variant mt-1">
+            <span>冷色调</span>
+            <span>暖色调</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 构图参数 -->
+      <div class="mb-6">
+        <h3 class="text-base font-semibold text-on-surface mb-4 flex items-center gap-2">
+          <i data-lucide="layout" class="w-4 h-4 text-primary"></i>
+          构图参数
+        </h3>
+
+        <!-- 构图方式 -->
+        <div class="mb-4">
+          <label class="text-sm font-medium text-on-surface mb-2 block">构图方式</label>
+          <div class="flex gap-2">
+            <button class="px-3 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium">
+              居中构图
+            </button>
+            <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium">
+              动态构图
+            </button>
+            <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium">
+              对称构图
+            </button>
+          </div>
+        </div>
+
+        <!-- 焎点位置（9宫格） -->
+        <div class="mb-4">
+          <label class="text-sm font-medium text-on-surface mb-3 block">焦点位置</label>
+          <div class="grid grid-cols-3 gap-2 max-w-xs">
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+            <button class="aspect-square bg-primary rounded-lg flex items-center justify-center">
+              <i data-lucide="circle" class="w-3 h-3 text-on-primary"></i>
+            </button>
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+            <button class="aspect-square bg-surface-container rounded-lg flex items-center justify-center
+                           hover:bg-surface-container-high transition-colors">
+              <i data-lucide="circle" class="w-3 h-3 text-on-surface-variant"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 景深效果 -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-sm font-medium text-on-surface">景深效果</label>
+            <span class="text-sm text-on-surface-variant">60%</span>
+          </div>
+          <input type="range" min="0" max="100" value="60" class="w-full">
+          <div class="flex justify-between text-xs text-on-surface-variant mt-1">
+            <span>无虚化</span>
+            <span>强虚化</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 高级参数（可折叠） -->
+      <div class="mb-6">
+        <details class="bg-surface-container rounded-xl">
+          <summary class="px-4 py-3 cursor-pointer flex items-center justify-between">
+            <h3 class="text-base font-semibold text-on-surface flex items-center gap-2">
+              <i data-lucide="settings-2" class="w-4 h-4 text-primary"></i>
+              高级参数
+            </h3>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-on-surface-variant"></i>
+          </summary>
+          <div class="px-4 pb-4 border-t border-outline-variant/20 pt-4">
+            <!-- 生成质量 -->
+            <div class="mb-4">
+              <label class="text-sm font-medium text-on-surface mb-2 block">生成质量</label>
+              <div class="flex gap-2">
+                <button class="px-3 py-2 bg-surface-container-high text-on-surface rounded-lg text-sm font-medium">
+                  快速
+                </button>
+                <button class="px-3 py-2 bg-surface-container-high text-on-surface rounded-lg text-sm font-medium">
+                  标准
+                </button>
+                <button class="px-3 py-2 bg-primary text-on-primary rounded-lg text-sm font-medium">
+                  高质量
+                </button>
+              </div>
+            </div>
+
+            <!-- 迭代次数 -->
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-2">
+                <label class="text-sm font-medium text-on-surface">迭代次数</label>
+                <span class="text-sm text-on-surface-variant">80次</span>
+              </div>
+              <input type="range" min="20" max="100" value="80" class="w-full">
+            </div>
+
+            <!-- 随机种子 -->
+            <div class="mb-4">
+              <label class="text-sm font-medium text-on-surface mb-2 block">随机种子（固定可保持一致性）</label>
+              <input type="number" value="12345" 
+                     class="w-full bg-surface-container-high rounded-lg px-3 py-2 text-sm text-on-surface
+                            border-none focus:ring-2 focus:ring-primary/30">
+            </div>
+
+            <!-- 多样性 -->
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-2">
+                <label class="text-sm font-medium text-on-surface">多样性</label>
+                <span class="text-sm text-on-surface-variant">50%</span>
+              </div>
+              <input type="range" min="0" max="100" value="50" class="w-full">
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="space-y-3">
+        <button class="w-full bg-primary text-on-primary rounded-xl py-3.5 font-semibold
+                       hover:bg-primary/90 active:bg-primary/80 transition-colors shadow-float">
+          <div class="flex items-center justify-center gap-2">
+            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            <span>应用调整</span>
+          </div>
+        </button>
+
+        <div class="flex gap-3">
+          <button class="flex-1 bg-surface-container text-on-surface rounded-xl py-3 font-medium
+                         hover:bg-surface-container-high transition-colors">
+            <div class="flex items-center justify-center gap-2">
+              <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+              <span>重置</span>
+            </div>
+          </button>
+          <button class="flex-1 bg-surface-container text-on-surface rounded-xl py-3 font-medium
+                         hover:bg-surface-container-high transition-colors">
+            <div class="flex items-center justify-center gap-2">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>导出配置</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 配置导入提示 -->
+      <div class="mt-6 bg-primary-container/30 rounded-lg p-3">
+        <div class="flex items-start gap-2">
+          <i data-lucide="info" class="w-4 h-4 text-primary mt-0.5"></i>
+          <p class="text-xs text-on-surface-variant">
+            参数配置可导出为 JSON 文件，方便在其他图片生成任务中复用。导入配置后将自动填充所有参数值
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>lucide.createIcons();</script>
+</body>
+
+</html>

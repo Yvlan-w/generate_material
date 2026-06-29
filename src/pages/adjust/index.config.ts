@@ -1,7 +1,7 @@
 export default typeof definePageConfig === 'function'
   ? definePageConfig({
-      navigationBarTitleText: '首页'
+      navigationBarTitleText: '微调'
     })
   : {
-      navigationBarTitleText: '首页'
+      navigationBarTitleText: '微调'
     }

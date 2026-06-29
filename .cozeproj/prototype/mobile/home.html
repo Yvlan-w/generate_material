@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://lf-code-agent.coze.cn/obj/x-ai-cn/cdn/jquery/jquery-3.7.1.min.js"></script>
+  <script src="https://lf-code-agent.coze.cn/obj/x-ai-cn/cdn/lucide/lucide-1.11.0.min.js"></script>
+  <script src="https://lf-code-agent.coze.cn/obj/x-ai-cn/cdn/tailwindcss/tailwindcss-browser-4.2.4.min.js"></script>
+
+  <style type="text/tailwindcss">
+    @theme {
+      --color-primary:              #1E40AF;
+      --color-primary-container:    #DBEAFE;
+      --color-on-primary:           #ffffff;
+      --color-background:                 #FFFFFF;
+      --color-surface-container-lowest:   #FFFFFF;
+      --color-surface:                    #FFFFFF;
+      --color-surface-container:          #F3F4F6;
+      --color-surface-container-high:     #E5E7EB;
+      --color-surface-container-highest:  #D1D5DB;
+      --color-on-surface:           #1F2937;
+      --color-on-surface-variant:   #6B7280;
+      --color-success:  #22c55e;
+      --color-error:    #ef4444;
+      --color-warning:  #f59e0b;
+      --color-outline:          #D1D5DB;
+      --color-outline-variant:  #E5E7EB;
+      --radius-sm:   0.25rem;
+      --radius-md:   0.375rem;
+      --radius-lg:   0.5rem;
+      --radius-xl:   0.75rem;
+      --radius-2xl:  1rem;
+      --radius-full: 9999px;
+      --shadow-card:   0 4px 12px rgba(0,0,0,0.08);
+      --shadow-float:  0 10px 25px rgba(0,0,0,0.12);
+      --shadow-dialog: 0 25px 50px rgba(0,0,0,0.16);
+      --font-sans: "Inter", "Noto Sans SC", system-ui, sans-serif;
+    }
+  </style>
+
+  <style>
+    body {
+      min-height: max(812px, 100dvh);
+      font-family: system-ui, sans-serif;
+    }
+  </style>
+
+  <script>
+    document.addEventListener('error', function (e) {
+      const img = e.target;
+      if (img.tagName !== 'IMG' || img.dataset.fallback) return;
+      img.dataset.fallback = '1';
+      const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const cat = img.getAttribute('data-category') || '其他';
+      const alt = img.getAttribute('alt') || '';
+      const label = esc(alt.length > 8 ? alt.slice(0, 8) + '…' : alt);
+      const icons = { '人物': '👤', '自然风景': '🏞', '动物': '🐾', '建筑城市': '🏙', '运动体育': '⚽', '交通工具': '🚗', '食物': '🍽', '服饰时尚': '👗', '商业科技': '💼', '游戏娱乐': '🎮', '艺术': '🎨', '其他': '🖼' };
+      const icon = icons[cat] || '🖼';
+      const w = img.width || 400, h = img.height || 300;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="%23f3f4f6"/><text x="50%" y="45%" text-anchor="middle" font-size="${Math.min(w, h) * 0.18}" dominant-baseline="central">${icon}</text><text x="50%" y="68%" text-anchor="middle" font-size="${Math.min(w, h) * 0.07}" fill="%239ca3af" font-family="system-ui,sans-serif" dominant-baseline="central">${label}</text></svg>`;
+      img.src = 'data:image/svg+xml,' + svg;
+    }, true);
+  </script>
+</head>
+
+<body class="bg-background text-on-surface font-sans">
+
+  <!-- 顶部 Header -->
+  <header class="bg-background sticky top-0 z-40 h-14 flex items-center justify-between px-4">
+    <div class="w-10 h-10 flex items-center justify-center text-on-surface-variant">
+      <i data-lucide="sparkles" class="w-5 h-5"></i>
+    </div>
+    <h1 class="text-base font-semibold text-on-surface">AI营销素材生成</h1>
+    <button class="w-10 h-10 flex items-center justify-center text-on-surface-variant rounded-full
+                   hover:bg-surface-container active:bg-surface-container-high transition-colors">
+      <i data-lucide="settings" class="w-5 h-5"></i>
+    </button>
+  </header>
+
+  <!-- 底部 TabBar -->
+  <nav class="fixed bottom-0 left-0 right-0 z-40 bg-surface
+              flex justify-around items-center h-14 pb-[env(safe-area-inset-bottom)]">
+    <a href="home.html" class="flex flex-col items-center gap-0.5 px-5 py-1.5 text-primary"
+       aria-current="page">
+      <i data-lucide="home" class="w-5 h-5"></i>
+      <span class="text-[10px] font-bold tracking-wide">首页</span>
+    </a>
+    <a href="gallery.html" class="flex flex-col items-center gap-0.5 px-5 py-1.5 text-on-surface-variant
+                       hover:text-on-surface transition-colors">
+      <i data-lucide="image" class="w-5 h-5"></i>
+      <span class="text-[10px] font-bold tracking-wide">图库</span>
+    </a>
+    <a href="adjust.html" class="flex flex-col items-center gap-0.5 px-5 py-1.5 text-on-surface-variant
+                       hover:text-on-surface transition-colors">
+      <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+      <span class="text-[10px] font-bold tracking-wide">微调</span>
+    </a>
+  </nav>
+
+  <main class="flex-1 overflow-y-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))]">
+    <!-- 首页内容 -->
+    <div class="px-4 py-6">
+      <!-- 标题区域 -->
+      <div class="mb-6">
+        <h2 class="text-xl font-bold text-on-surface mb-2">描述您的图片需求</h2>
+        <p class="text-sm text-on-surface-variant">通过自然语言描述，AI将为您生成符合投资咨询行业规范的营销素材图片</p>
+      </div>
+
+      <!-- 输入区域 -->
+      <div class="bg-surface-container rounded-xl p-4 mb-6">
+        <textarea 
+          class="w-full bg-transparent text-on-surface placeholder:text-on-surface-variant resize-none border-none focus:outline-none"
+          placeholder="例如：生成一张专业稳重的品牌宣传图，蓝色为主色调，展示团队协作场景..."
+          rows="4"
+        ></textarea>
+      </div>
+
+      <!-- 快捷风格标签 -->
+      <div class="mb-6">
+        <p class="text-sm font-semibold text-on-surface mb-3">快捷风格选择</p>
+        <div class="flex flex-wrap gap-2">
+          <button class="px-3 py-2 bg-primary-container text-primary rounded-lg text-sm font-medium
+                         hover:bg-primary hover:text-on-primary transition-colors">
+            专业稳重
+          </button>
+          <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium
+                         hover:bg-surface-container-high transition-colors">
+            现代简约
+          </button>
+          <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium
+                         hover:bg-surface-container-high transition-colors">
+            科技感
+          </button>
+          <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium
+                         hover:bg-surface-container-high transition-colors">
+            温暖亲和
+          </button>
+          <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium
+                         hover:bg-surface-container-high transition-colors">
+            数据可视化
+          </button>
+          <button class="px-3 py-2 bg-surface-container text-on-surface rounded-lg text-sm font-medium
+                         hover:bg-surface-container-high transition-colors">
+            团队风采
+          </button>
+        </div>
+      </div>
+
+      <!-- 合规提示 -->
+      <div class="bg-primary-container/30 rounded-lg p-3 mb-6">
+        <div class="flex items-start gap-2">
+          <i data-lucide="shield-check" class="w-4 h-4 text-primary mt-0.5"></i>
+          <p class="text-xs text-on-surface-variant">
+            所有生成的图片都将经过合规审核，确保符合投资咨询行业规范，不包含收益承诺、夸大宣传等违规内容
+          </p>
+        </div>
+      </div>
+
+      <!-- 生成按钮 -->
+      <button class="w-full bg-primary text-on-primary rounded-xl py-3.5 font-semibold
+                     hover:bg-primary/90 active:bg-primary/80 transition-colors shadow-float">
+        <div class="flex items-center justify-center gap-2">
+          <i data-lucide="wand-2" class="w-5 h-5"></i>
+          <span>开始生成</span>
+        </div>
+      </button>
+
+      <!-- 最近生成 -->
+      <div class="mt-8">
+        <h3 class="text-base font-semibold text-on-surface mb-4">最近生成</h3>
+        <div class="space-y-3">
+          <!-- 示例卡片1 -->
+          <div class="bg-surface-container rounded-xl p-3 shadow-card">
+            <div class="flex gap-3">
+              <div class="w-20 h-20 bg-surface-container-high rounded-lg flex items-center justify-center">
+                <i data-lucide="image" class="w-8 h-8 text-on-surface-variant"></i>
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-medium text-on-surface mb-1">专业品牌宣传图</p>
+                <p class="text-xs text-on-surface-variant mb-2">蓝色主色调，团队协作场景</p>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-1 bg-success/10 text-success text-xs rounded">合规通过</span>
+                  <span class="text-xs text-on-surface-variant">2小时前</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 示例卡片2 -->
+          <div class="bg-surface-container rounded-xl p-3 shadow-card">
+            <div class="flex gap-3">
+              <div class="w-20 h-20 bg-surface-container-high rounded-lg flex items-center justify-center">
+                <i data-lucide="image" class="w-8 h-8 text-on-surface-variant"></i>
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-medium text-on-surface mb-1">数据可视化图表</p>
+                <p class="text-xs text-on-surface-variant mb-2">现代简约风格，业绩展示</p>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-1 bg-success/10 text-success text-xs rounded">合规通过</span>
+                  <span class="text-xs text-on-surface-variant">昨天</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>lucide.createIcons();</script>
+</body>
+
+</html>
