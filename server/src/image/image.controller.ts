@@ -107,11 +107,11 @@ export class ImageController {
    * POST /api/image/adjust
    */
   @Post('adjust')
-  async adjustImage(@Body() body: { imageId: string; params: any }) {
+  async adjustImage(@Body() body: { imageId: string; params: any; imageUrl?: string }) {
     console.log('[API] Adjust request:', body);
-    
-    const result = await this.imageService.adjustImage(body.imageId, body.params);
-    
+
+    const result = await this.imageService.adjustImage(body.imageId, body.params, body.imageUrl);
+
     return {
       code: 200,
       msg: 'success',
