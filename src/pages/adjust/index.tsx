@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Text } from '@tarojs/components';
+import { View, Text, Image } from '@tarojs/components';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Network } from '@/network';
 import Taro from '@tarojs/taro';
-import { Settings, Save, RefreshCw, Info, LoaderCircle } from 'lucide-react-taro';
+import { Settings, Save, RefreshCw, Info, LoaderCircle, Image as ImageIcon, Sparkles } from 'lucide-react-taro';
 import CustomTabBar from '@/components/CustomTabBar';
 import './index.css';
 
@@ -19,12 +19,20 @@ interface ParamConfig {
   is_active: boolean;
 }
 
+interface PendingImage {
+  imageId: string;
+  imageUrl: string;
+}
+
 const AdjustPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [params, setParams] = useState<ParamConfig[]>([]);
   const [modifiedParams, setModifiedParams] = useState<Record<string, number>>({});
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
+  const [adjustedUrl, setAdjustedUrl] = useState<string>('');
 
   // 检查管理员权限
   useEffect(() => {
@@ -51,6 +59,13 @@ const AdjustPage = () => {
 
       setIsAdmin(true);
       fetchParams();
+
+      // 读取图库传过来的待微调图片
+      const pending = Taro.getStorageSync('pendingAdjustImage');
+      if (pending && pending.imageUrl) {
+        setPendingImage(pending);
+        Taro.removeStorageSync('pendingAdjustImage');
+      }
     };
 
     checkAdmin();
@@ -126,6 +141,48 @@ const AdjustPage = () => {
     });
     setModifiedParams(resetParams);
     Taro.showToast({ title: '已重置', icon: 'success' });
+  };
+
+  // 使用当前参数微调待处理图片
+  const handleApplyAdjustment = async () => {
+    if (!pendingImage) {
+      Taro.showToast({ title: '请先从图库选择图片', icon: 'none' });
+      return;
+    }
+    try {
+      setAdjusting(true);
+      const styleType = modifiedParams.style_type ?? modifiedParams.styleType;
+      const colorTone = modifiedParams.color_tone ?? modifiedParams.colorTone;
+      const brightness = modifiedParams.brightness ?? modifiedParams.brightness_value ?? 0;
+      const contrast = modifiedParams.contrast ?? modifiedParams.contrast_value ?? 0;
+
+      const response = await Network.request({
+        url: '/api/image/adjust',
+        method: 'POST',
+        data: {
+          imageId: pendingImage.imageId,
+          imageUrl: pendingImage.imageUrl,
+          params: {
+            styleType: styleType ? String(styleType) : undefined,
+            colorTone: colorTone ? String(colorTone) : undefined,
+            brightness: Number(brightness) || 0,
+            contrast: Number(contrast) || 0,
+          },
+        },
+      });
+
+      if (response.data?.code === 200 && response.data.data?.imageUrl) {
+        setAdjustedUrl(response.data.data.imageUrl);
+        Taro.showToast({ title: '已生成微调版本', icon: 'success' });
+      } else {
+        Taro.showToast({ title: '微调失败', icon: 'error' });
+      }
+    } catch (error) {
+      console.error('微调失败:', error);
+      Taro.showToast({ title: '网络异常', icon: 'error' });
+    } finally {
+      setAdjusting(false);
+    }
   };
 
   // 渲染参数配置项
@@ -322,6 +379,64 @@ const AdjustPage = () => {
           调整 AI 生成参数，优化图片生成效果
         </Text>
       </View>
+
+      {/* 待微调图片预览 */}
+      {pendingImage && (
+        <View style={{
+          marginLeft: '16px',
+          marginRight: '16px',
+          marginTop: '16px',
+          padding: '16px',
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          border: '1px solid #E2E8F0',
+        }}>
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '12px' }}>
+            <ImageIcon size={18} color="#3B82F6" style={{ marginRight: '8px' }} />
+            <Text style={{ fontSize: '15px', fontWeight: '600', color: '#1E293B' }}>
+              待微调图片
+            </Text>
+          </View>
+          <Image
+            src={adjustedUrl || pendingImage.imageUrl}
+            mode="widthFix"
+            style={{
+              width: '100%',
+              borderRadius: '12px',
+              backgroundColor: '#F1F5F9',
+            }}
+          />
+          {adjustedUrl && (
+            <Text style={{ fontSize: '12px', color: '#10B981', marginTop: '10px', display: 'block' }}>
+              已生成微调版本（对比上方原图）
+            </Text>
+          )}
+          <Button
+            style={{
+              width: '100%',
+              marginTop: '12px',
+              backgroundColor: '#3B82F6',
+              borderRadius: '12px',
+              height: '44px',
+            }}
+            onClick={handleApplyAdjustment}
+            disabled={adjusting}
+          >
+            {adjusting ? (
+              <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+                <LoaderCircle size={16} color="#FFFFFF" className="animate-spin" />
+                <Text style={{ color: '#FFFFFF', fontSize: '14px', marginLeft: '8px' }}>微调中...</Text>
+              </View>
+            ) : (
+              <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+                <Sparkles size={16} color="#FFFFFF" style={{ marginRight: '8px' }} />
+                <Text style={{ color: '#FFFFFF', fontSize: '14px' }}>应用参数微调</Text>
+              </View>
+            )}
+          </Button>
+        </View>
+      )}
 
       {/* 参数列表 */}
       <View style={{

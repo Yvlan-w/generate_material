@@ -76,8 +76,11 @@ const GalleryPage = () => {
     });
   };
 
-  // 处理图片点击
-  const handleImageClick = (_imageId: string) => {
+  // 处理图片点击：把选中的图片信息存到 storage，供 adjust 页面读取
+  const handleImageClick = (_imageId: string, imageUrl?: string) => {
+    if (imageUrl) {
+      Taro.setStorageSync('pendingAdjustImage', { imageId: _imageId, imageUrl });
+    }
     Taro.switchTab({ url: '/pages/adjust/index' });
   };
 
@@ -235,7 +238,7 @@ const GalleryPage = () => {
                   boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                   border: '1px solid #E2E8F0'
                 }}
-                onClick={() => handleImageClick(image.id)}
+                onClick={() => handleImageClick(image.id, image.url)}
               >
                 <View style={{
                   aspectRatio: '1',

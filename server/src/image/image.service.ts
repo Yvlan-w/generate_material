@@ -30,6 +30,43 @@ export interface StructuredNeeds {
   summary?: string;
 }
 
+// 字段中文标签映射，集中维护，避免多处硬编码
+const NEED_FIELD_LABELS: Record<keyof StructuredNeeds, string> = {
+  theme: '主题内容',
+  colorTone: '色调倾向',
+  scene: '场景描述',
+  emotion: '情感基调',
+  style: '图片风格',
+  size: '图片尺寸',
+  targetAudience: '目标受众',
+  usage: '使用场景',
+  summary: '需求摘要',
+};
+
+// 必填字段
+const REQUIRED_NEED_FIELDS: Array<keyof StructuredNeeds> = ['theme', 'colorTone', 'style'];
+
+// 可选但建议收集的字段
+const OPTIONAL_NEED_FIELDS: Array<keyof StructuredNeeds> = [
+  'scene',
+  'emotion',
+  'size',
+  'targetAudience',
+  'usage',
+];
+
+/**
+ * 将 StructuredNeeds 中的非空字段格式化为多行描述
+ * 统一用于 prompt 生成、合规校验、摘要生成等环节，避免字段遗漏
+ */
+function formatNeedsForPrompt(needs: StructuredNeeds, exclude: Array<keyof StructuredNeeds> = []): string {
+  return (Object.keys(NEED_FIELD_LABELS) as Array<keyof StructuredNeeds>)
+    .filter((key) => key !== 'summary' && !exclude.includes(key))
+    .filter((key) => needs[key])
+    .map((key) => `- ${NEED_FIELD_LABELS[key]}：${needs[key]}`)
+    .join('\n');
+}
+
 export interface ComplianceResult {
   passed: boolean;
   violationAspects?: string;
@@ -131,110 +168,192 @@ export class ImageService {
    */
   private async handleCollectingStage(session: SessionData, message: string): Promise<ChatResponse> {
     console.log('[Collecting] 处理需求收集阶段');
-    
-    // 构建需求收集Agent提示词
+
+    // 构建需求收集Agent提示词（作为 system 消息注入，让 LLM Agent 真正生效）
     const collectPrompt = this.buildCollectAgentPrompt(session);
-    
-    // 调用LLM进行需求收集
-    const llmResponse = await this.llmClient.invoke(
-      session.messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      { model: 'doubao-seed-2-0-lite-260215', temperature: 0.7 }
-    );
-    
+
+    // 将 system 提示词 + 历史对话 + 当前用户消息合并传给 LLM
+    const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: collectPrompt },
+      ...session.messages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    ];
+
+    // 调用 LLM 进行需求收集（让 Agent 基于上下文给出引导回复）
+    let llmReply = '';
+    try {
+      const llmResponse = await this.llmClient.invoke(llmMessages, {
+        model: 'doubao-seed-2-0-lite-260215',
+        temperature: 0.7,
+      });
+      llmReply = (llmResponse.content || '').trim();
+    } catch (e) {
+      console.error('[Collecting] LLM Agent 调用失败，将回退到模板回复:', e);
+      llmReply = '';
+    }
+
     // 分析用户消息，提取需求字段
     const extractedNeeds = await this.extractNeedsFromMessage(message, session);
-    
+
     // 更新已收集的字段
     if (extractedNeeds) {
-      Object.keys(extractedNeeds).forEach(key => {
-        if (extractedNeeds[key]) {
+      Object.keys(extractedNeeds).forEach((key) => {
+        if ((extractedNeeds as any)[key]) {
           session.collectedFields.add(key);
           session.structuredNeeds = { ...session.structuredNeeds, ...extractedNeeds };
         }
       });
     }
-    
-    // 检查是否已收集完整
-    const requiredFields = ['theme', 'colorTone', 'style'];
-    const isComplete = requiredFields.every(field => session.collectedFields.has(field));
-    
+
+    // 检查是否已收集完整（仅以必填字段为准，可选字段缺失也不阻塞生成）
+    const isComplete = REQUIRED_NEED_FIELDS.every((field) => session.collectedFields.has(field));
+    const missingOptional = OPTIONAL_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
+
     if (isComplete && session.structuredNeeds) {
-      // 需求收集完成，进入合规校验
-      console.log('[Collecting] 需求收集完成，进入合规校验');
-      session.stage = 'compliance-checking';
-      
-      // 调用合规校验
-      const complianceResult = await this.checkCompliance(session.structuredNeeds);
-      session.complianceResult = complianceResult;
-      
-      if (complianceResult.passed) {
-        // 合规通过，进入图片生成
-        session.stage = 'generating';
-        
-        // 生成正负提示词
-        const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds);
-        
-        // 生成图片
-        const imageUrl = await this.generateImageFromPrompts(positivePrompt, negativePrompt);
-        session.generatedImage = imageUrl;
-        
-        // 保存到数据库
-        await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, complianceResult);
-        
-        // 标记完成
-        session.stage = 'completed';
-        
-        // 生成免责文案
-        const disclaimer = this.generateDisclaimer(session.structuredNeeds);
-        
-        // 记录Agent回复
-        session.messages.push({ 
-          role: 'assistant', 
-          content: `您的营销素材图片已生成完成！${session.structuredNeeds.summary ? `\n\n需求摘要：${session.structuredNeeds.summary}` : ''}` 
-        });
-        
+      // 必填字段已齐全
+      const triggerWords = ['生成', '开始', '确认', '就这样', '出图', 'go', 'generate', 'start'];
+      const userSaysGenerate = triggerWords.some((w) =>
+        message.trim().toLowerCase().includes(w.toLowerCase()),
+      );
+
+      // 如果用户明确要求生成，直接进入生成流程，不再追问可选字段
+      if (userSaysGenerate) {
+        return await this.proceedToGeneration(session);
+      }
+
+      // 还有可选字段未收集，主动询问一次
+      if (missingOptional.length > 0) {
+        // 如果 LLM 已经根据上下文给出了自然引导，就用它；否则用模板
+        const optionalHint =
+          llmReply && llmReply.length < 60
+            ? llmReply
+            : `信息已基本齐全。为了让素材更贴合实际用途，${this.describeOptionalField(missingOptional[0])}？如果暂时没有更多要求，直接回复「生成」即可进入下一步。`;
+        session.messages.push({ role: 'assistant', content: optionalHint });
         return {
-          stage: 'completed' as SessionStage,
-          reply: '您的营销素材图片已生成完成！',
+          stage: 'collecting' as SessionStage,
+          reply: optionalHint,
           structuredNeeds: session.structuredNeeds,
-          complianceResult,
-          generatedImage: imageUrl,
-          disclaimer,
-          type: 'text'
-        };
-      } else {
-        // 合规未通过，返回违规提示
-        session.stage = 'violation';
-        
-        // 记录Agent回复
-        session.messages.push({ 
-          role: 'assistant', 
-          content: `抱歉，您的需求未能通过合规校验。${complianceResult.violationAspects}\n\n改进建议：${complianceResult.suggestions}\n\n请您根据建议优化需求后重新描述。` 
-        });
-        
-        return {
-          stage: 'violation' as SessionStage,
-          reply: `抱歉，您的需求未能通过合规校验。`,
-          complianceResult,
-          structuredNeeds: session.structuredNeeds,
-          type: 'violation-warning'
+          type: 'text',
         };
       }
+
+      // 所有字段都收集齐了，进入生成流程
+      return await this.proceedToGeneration(session);
     } else {
       // 继续收集需求
       console.log('[Collecting] 继续收集需求');
-      
-      // 生成引导回复
-      const guideReply = await this.generateGuideReply(session);
-      
+
+      // 优先使用 LLM 基于上下文生成的引导回复，确保贴合对话语境
+      const guideReply = llmReply && llmReply.length > 0 && llmReply.length < 80
+        ? llmReply
+        : await this.generateGuideReply(session);
+
       // 记录Agent回复
       session.messages.push({ role: 'assistant', content: guideReply });
-      
+
       return {
         stage: 'collecting' as SessionStage,
         reply: guideReply,
         structuredNeeds: session.structuredNeeds,
+        type: 'text',
+      };
+    }
+  }
+
+  /**
+   * 可选字段的自然语言描述，用于提示用户补充
+   */
+  private describeOptionalField(field: keyof StructuredNeeds): string {
+    const map: Record<string, string> = {
+      targetAudience: '这次图片主要面向哪类受众（如高净值客户、年轻投资者等）',
+      usage: '这张图片会用在哪里（如朋友圈、公众号头图、海报等）',
+      size: '图片希望的尺寸或比例（如 1:1、16:9、竖版海报等）',
+      scene: '图片希望呈现的场景（如办公室、会议室等）',
+      emotion: '希望图片传达的情感基调（如专业、温暖、活力等）',
+    };
+    return map[field] || `是否补充「${NEED_FIELD_LABELS[field]}」信息`;
+  }
+
+  /**
+   * 进入合规校验 + 生成流程
+   */
+  private async proceedToGeneration(session: SessionData): Promise<ChatResponse> {
+    console.log('[Collecting] 需求收集完成，进入合规校验');
+    session.stage = 'compliance-checking';
+
+    // 先生成需求摘要（存入 summary 字段，用于前端展示和存库）
+    try {
+      const summary = await this.generateSummary(session.structuredNeeds!);
+      session.structuredNeeds = { ...session.structuredNeeds!, summary };
+      session.collectedFields.add('summary');
+    } catch (e) {
+      console.error('[Collecting] 摘要生成失败:', e);
+    }
+
+    // 调用合规校验
+    const complianceResult = await this.checkCompliance(session.structuredNeeds!);
+    session.complianceResult = complianceResult;
+
+    if (complianceResult.passed) {
+      // 合规通过，进入图片生成
+      session.stage = 'generating';
+
+      // 生成正负提示词
+      const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds!);
+
+      // 生成图片（透传原始需求，让 size/usage 映射为 SDK 的 size 参数）
+      const imageUrl = await this.generateImageFromPrompts(
+        positivePrompt,
+        negativePrompt,
+        session.structuredNeeds,
+      );
+      session.generatedImage = imageUrl;
+
+      // 保存到数据库
+      await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, complianceResult);
+
+      // 标记完成
+      session.stage = 'completed';
+
+      // 生成免责文案
+      const disclaimer = this.generateDisclaimer(session.structuredNeeds!);
+
+      const summaryText = session.structuredNeeds?.summary
+        ? `\n\n需求摘要：${session.structuredNeeds.summary}`
+        : '';
+
+      // 记录Agent回复
+      session.messages.push({
+        role: 'assistant',
+        content: `您的营销素材图片已生成完成！${summaryText}`
+      });
+
+      return {
+        stage: 'completed' as SessionStage,
+        reply: `您的营销素材图片已生成完成！${summaryText}`,
+        structuredNeeds: session.structuredNeeds,
+        complianceResult,
+        generatedImage: imageUrl,
+        disclaimer,
         type: 'text'
+      };
+    } else {
+      // 合规未通过，返回违规提示
+      session.stage = 'violation';
+
+      session.messages.push({
+        role: 'assistant',
+        content: `抱歉，您的需求未能通过合规校验。${complianceResult.violationAspects}\n\n改进建议：${complianceResult.suggestions}\n\n请您根据建议优化需求后重新描述。`
+      });
+
+      return {
+        stage: 'violation' as SessionStage,
+        reply: `抱歉，您的需求未能通过合规校验。`,
+        complianceResult,
+        structuredNeeds: session.structuredNeeds,
+        type: 'violation-warning'
       };
     }
   }
@@ -244,27 +363,34 @@ export class ImageService {
    */
   private buildCollectAgentPrompt(session: SessionData): string {
     const collectedFields = Array.from(session.collectedFields);
-    
+    const missingRequired = REQUIRED_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
+    const missingOptional = OPTIONAL_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
+
+    const requiredDesc = REQUIRED_NEED_FIELDS.map(
+      (f) => `${f}(${NEED_FIELD_LABELS[f]})`,
+    ).join('、');
+    const optionalDesc = OPTIONAL_NEED_FIELDS.map(
+      (f) => `${f}(${NEED_FIELD_LABELS[f]})`,
+    ).join('、');
+
     return `你是一个专业的投资咨询行业营销素材生成助手，正在收集用户的图片生成需求。
 
-当前已收集的信息字段：${collectedFields.length > 0 ? collectedFields.join(', ') : '无'}
+当前已收集的信息字段：${collectedFields.length > 0 ? collectedFields.map(f => NEED_FIELD_LABELS[f as keyof StructuredNeeds]).join(', ') : '无'}
 
-需要收集的关键字段：
-- theme: 主题内容（如：品牌宣传、团队风采、数据可视化等）
-- colorTone: 色调倾向（如：蓝色、灰色、暖色调等）
-- style: 图片风格（如：专业稳重、现代简约、科技感等）
-- scene: 场景描述（可选，如：办公室、会议室等）
-- emotion: 情感基调（可选，如：专业、温暖、活力等）
+必须收集的关键字段：${requiredDesc}
+可选但建议补充的字段：${optionalDesc}
 
 你的任务：
 1. 理解用户最新的输入，分析是否包含新的需求信息
-2. 如果已收集完整，提示用户即将进行合规校验
-3. 如果信息不完整，友好地引导用户补充缺失的字段
+2. 如果必填字段尚未齐全，只引导用户补充下一个缺失的必填字段
+3. 如果必填字段已齐全但可选字段仍有缺失，主动提示用户是否补充（例如"为了让素材更贴合使用场景，是否可以告诉我...？"）
+4. 不要一次问多个问题，一次只引导一个字段
+5. 避免重复已收集的信息
 
 回复要求：
 - 简洁友好，不超过3句话
-- 如果需要引导，提出一个具体的问题
-- 避免重复已收集的信息`;
+- 语气自然，不要像在填表
+- 如果所有必填和可选字段都已收集，提示用户即将进行合规校验`;
   }
 
   /**
@@ -275,18 +401,21 @@ export class ImageService {
 
 用户输入：${message}
 
-请提取以下字段（如果提到）：
-- theme: 主题内容
-- colorTone: 色调倾向
-- style: 图片风格
-- scene: 场景描述
-- emotion: 情感基调
-- size: 图片尺寸
-- targetAudience: 目标受众
-- usage: 使用场景
+已有的需求（作为参考，若用户新输入有更新则以新输入为准）：
+${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
 
-输出JSON格式，未提到的字段留空。例如：
-{"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重"}`;
+请尽可能提取以下字段（未提到的字段留空字符串，不要编造）：
+- theme: 主题内容（如品牌宣传、团队风采、数据可视化等）
+- colorTone: 色调倾向（如蓝色、灰色、暖色调等）
+- style: 图片风格（如专业稳重、现代简约、科技感等）
+- scene: 场景描述（如办公室、会议室等）
+- emotion: 情感基调（如专业、温暖、活力等）
+- size: 图片尺寸或比例（如 1:1、16:9、竖版海报 1080x1920 等）
+- targetAudience: 目标受众（如高净值客户、年轻投资者、内部员工等）
+- usage: 使用场景（如朋友圈、公众号头图、海报、线下展架、短视频封面等）
+
+输出严格 JSON 格式，例如：
+{"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重","targetAudience":"高净值客户","usage":"朋友圈","size":"1:1"}`;
 
     const response = await this.llmClient.invoke(
       [{ role: 'user', content: extractPrompt }],
@@ -297,7 +426,14 @@ export class ImageService {
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        // 过滤空字符串/空值
+        Object.keys(parsed).forEach((key) => {
+          if (parsed[key] === '' || parsed[key] === null || parsed[key] === undefined) {
+            delete parsed[key];
+          }
+        });
+        return parsed;
       }
     } catch (e) {
       console.error('[Extract] 解析失败:', e);
@@ -310,22 +446,33 @@ export class ImageService {
    * 生成引导回复
    */
   private generateGuideReply(session: SessionData): string {
-    const collectedFields = Array.from(session.collectedFields);
-    const missingFields = ['theme', 'colorTone', 'style'].filter(f => !session.collectedFields.has(f));
-    
-    if (missingFields.length === 0) {
-      return '信息已收集完整，正在进行合规校验...';
+    // 先看必填字段
+    const missingRequired = REQUIRED_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
+    if (missingRequired.length > 0) {
+      const field = missingRequired[0];
+      const questionMap: Record<string, string> = {
+        theme: '请告诉我图片的主题内容是什么？例如：品牌宣传、团队风采、数据可视化等。',
+        colorTone: '您希望图片使用什么色调？例如：蓝色（专业稳重）、暖色调（温暖亲和）等。',
+        style: '图片的风格倾向是什么？例如：专业稳重、现代简约、科技感等。',
+      };
+      return questionMap[field] || `请补充一下「${NEED_FIELD_LABELS[field]}」相关的信息。`;
     }
-    
-    // 根据缺失字段生成引导问题
-    const guideQuestions = {
-      theme: '请告诉我图片的主题内容是什么？例如：品牌宣传、团队风采、数据可视化等。',
-      colorTone: '您希望图片使用什么色调？例如：蓝色（专业稳重）、暖色调（温暖亲和）等。',
-      style: '图片的风格倾向是什么？例如：专业稳重、现代简约、科技感等。'
-    };
-    
-    // 返回第一个缺失字段的引导问题
-    return guideQuestions[missingFields[0]] || '请继续描述您的需求。';
+
+    // 必填字段齐全后，引导可选字段
+    const missingOptional = OPTIONAL_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
+    if (missingOptional.length > 0) {
+      const field = missingOptional[0];
+      const questionMap: Record<string, string> = {
+        targetAudience: '为了让素材更有针对性，这次图片主要面向哪类受众？例如：高净值客户、年轻投资者、内部员工等。',
+        usage: '这张图片会用在哪里？例如：朋友圈、公众号头图、海报、短视频封面等。',
+        size: '您希望图片的尺寸/比例是多少？例如：1:1 方图、16:9 横版、竖版海报等。',
+        scene: '如果图片中涉及场景，您希望是在哪里？例如：办公室、会议室等。',
+        emotion: '您希望图片传达什么情感基调？例如：专业、温暖、活力等。',
+      };
+      return questionMap[field] || `为了让素材更贴合需求，可以补充一下「${NEED_FIELD_LABELS[field]}」吗？`;
+    }
+
+    return '信息已收集完整，正在进行合规校验...';
   }
 
   /**
@@ -335,29 +482,35 @@ export class ImageService {
   private async checkCompliance(needs: StructuredNeeds): Promise<ComplianceResult> {
     console.log('[Compliance] 执行合规校验');
     
+    const needsText = formatNeedsForPrompt(needs) || '（未指定）';
+
     const compliancePrompt = `你是一个投资咨询行业合规审核专家。
 
 用户图片生成需求：
-- 主题：${needs.theme || '未指定'}
-- 色调：${needs.colorTone || '未指定'}
-- 风格：${needs.style || '未指定'}
-- 场景：${needs.scene || '未指定'}
-- 情感：${needs.emotion || '未指定'}
+${needsText}
 
 投资咨询行业合规要求：
 ❌ 禁止内容：
-- 收益承诺（如"年化收益XX%"、"稳赚不赔"等）
-- 夸大宣传（如"最强"、"最佳"、"无风险"等）
-- 误导性表达（可能引起误解的表述）
-- 非法金融活动暗示
+- 收益承诺（如"年化收益XX%"、"稳赚不赔"、"保本"、"零风险"等）
+- 夸大宣传（如"最强"、"最佳"、"唯一"、"顶级"、"无风险"等）
+- 误导性表达（可能引起误解的表述，如"保证收益"、"坐享其成"等）
+- 非法金融活动暗示（涉及众筹、私募、未经批准的金融产品等）
 - 不当比较（与其他产品/机构的贬低性比较）
+- 面向不合格投资者的营销（如暗示"人人都能赚钱"、"小白零基础稳赚"等）
+- 面向特定受众（如未成年人、退休老人、风险承受力低的人群）时需更严格的风险提示
 
 ✅ 允许内容：
-- 品牌形象展示
-- 团队专业风采
-- 服务理念介绍
-- 合规的数据可视化
-- 行业知识分享
+- 品牌形象展示、公司实力介绍
+- 团队专业风采、投研团队展示
+- 服务理念介绍、合规的产品展示（不涉及具体收益）
+- 合规的数据可视化（展示已发生的历史业绩时需标注"历史业绩不代表未来收益"）
+- 行业知识分享、投教内容
+- 面向合格投资者的专业服务形象
+
+请基于以上需求进行严格判断，尤其关注 targetAudience（目标受众）和 usage（使用场景）字段：
+- 若面向"新手"、"小白"、"普通投资者"等受众，更要警惕是否存在诱导性表达
+- 若用于朋友圈、短视频等大众传播渠道，应确保内容稳健合规
+- 若需求中出现"高收益"、"稳赚"、"保本"、"零风险"、"荐股"、"内幕"等关键词，直接判定为不合规
 
 请判断该需求是否合规，输出JSON格式：
 {
@@ -387,28 +540,38 @@ export class ImageService {
   }
 
   /**
-   * 生成正负提示词
+   * 生成正负提示词（基于全部已收集字段）
    */
   private async generatePrompts(needs: StructuredNeeds): Promise<{ positivePrompt: string; negativePrompt: string }> {
     console.log('[Prompts] 生成正负提示词');
-    
-    const promptGenerator = `根据以下需求生成图片绘制的正负提示词。
 
-需求：
-- 主题：${needs.theme}
-- 色调：${needs.colorTone}
-- 风格：${needs.style}
-- 场景：${needs.scene || '通用'}
-- 情感：${needs.emotion || '专业'}
+    const needsText = formatNeedsForPrompt(needs);
+
+    // 根据 usage 推导画面尺寸建议（作为 size 的兜底）
+    const sizeHint = needs.size || this.inferSizeFromUsage(needs.usage);
+
+    const promptGenerator = `根据以下需求，生成一张营销素材图片的正、负向提示词。
+
+已收集的全部需求：
+${needsText}
+${sizeHint ? `- 建议尺寸/比例：${sizeHint}` : ''}
 
 生成要求：
-1. positivePrompt（正向提示词）：描述要生成的图片内容，包含主体、色调、风格、构图等
-2. negativePrompt（负向提示词）：描述要避免的内容，如低质量、违规元素等
+1. positivePrompt（正向提示词）：用一段连贯的中文描述画面，务必覆盖以下要素：
+   - 主题与核心主体（theme）
+   - 色调与氛围（colorTone、emotion）
+   - 画面风格（style）
+   - 使用场景/构图（scene、usage）
+   - 目标受众的身份特征（targetAudience，例如"专业的理财顾问形象"、"年轻投资者"等）
+   - 若涉及尺寸，应在提示词中体现构图比例（如 1:1 方图、16:9 横版、9:16 竖版）
+   - 适当补充细节，如"专业的商务摄影"、"高清质感"、"专业构图"等
+2. negativePrompt（负向提示词）：列出需要避免的元素，例如低质量、违规文字、卡通风格、廉价感、杂乱背景、过多水印等。
+3. 正/负提示词均禁止出现任何可能违反投资咨询行业合规的文字（如收益承诺、夸大宣传、荐股等）。
 
-输出JSON格式：
+输出严格 JSON 格式：
 {
-  "positivePrompt": "投资咨询团队专业协作场景，蓝色主色调，现代简约风格，办公室背景，专业稳重的氛围，高素质商务图片...",
-  "negativePrompt": "低质量，模糊，收益承诺文字，夸大宣传，违规内容，卡通风格，廉价感..."
+  "positivePrompt": "一段完整的中文画面描述，覆盖上述全部需求",
+  "negativePrompt": "以逗号分隔的禁用元素列表"
 }`;
 
     const response = await this.llmClient.invoke(
@@ -420,46 +583,155 @@ export class ImageService {
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.positivePrompt) return parsed;
       }
     } catch (e) {
       console.error('[Prompts] 解析失败:', e);
     }
     
-    // 默认提示词
+    // 兜底：把所有字段拼接到正向提示词里，确保不丢失
+    const fallbackParts: string[] = [];
+    if (needs.theme) fallbackParts.push(needs.theme);
+    if (needs.targetAudience) fallbackParts.push(`面向${needs.targetAudience}`);
+    if (needs.usage) fallbackParts.push(`用于${needs.usage}`);
+    if (needs.colorTone) fallbackParts.push(`${needs.colorTone}色调`);
+    if (needs.style) fallbackParts.push(`${needs.style}风格`);
+    if (needs.scene) fallbackParts.push(`场景：${needs.scene}`);
+    if (needs.emotion) fallbackParts.push(`${needs.emotion}氛围`);
+    if (sizeHint) fallbackParts.push(`尺寸${sizeHint}`);
+
     return {
-      positivePrompt: `${needs.theme}营销素材图片，${needs.colorTone}主色调，${needs.style}风格，专业商务氛围`,
-      negativePrompt: '低质量，模糊，违规内容，收益承诺，夸大宣传'
+      positivePrompt: `${fallbackParts.join('，')}，专业商务摄影，高清，构图专业，符合投资咨询行业形象`,
+      negativePrompt: '低质量，模糊，违规文字，收益承诺，夸大宣传，卡通风格，廉价感，杂乱背景'
     };
+  }
+
+  /**
+   * 根据使用场景推断建议尺寸
+   */
+  private inferSizeFromUsage(usage?: string): string | undefined {
+    if (!usage) return undefined;
+    const text = usage.toLowerCase();
+    if (text.includes('公众号头图') || text.includes('公众号banner') || text.includes('微博头图')) {
+      return '900x383（横版 banner，约 2.35:1）';
+    }
+    if (text.includes('朋友圈')) return '1:1 方图（1080x1080）';
+    if (text.includes('小红书')) return '3:4 竖版（1080x1440）';
+    if (text.includes('视频号') || text.includes('抖音') || text.includes('短视频')) return '9:16 竖版（1080x1920）';
+    if (text.includes('海报') || text.includes('展架')) return '3:4 或 A4 竖版';
+    if (text.includes('横版') || text.includes('banner')) return '16:9 横版';
+    return undefined;
+  }
+
+  /**
+   * 基于已收集字段生成需求摘要
+   */
+  private async generateSummary(needs: StructuredNeeds): Promise<string> {
+    const needsText = formatNeedsForPrompt(needs);
+    const summaryPrompt = `根据以下已收集的图片需求，生成一段 80 字以内的中文摘要，用自然语言串联核心信息（主题、受众、用途、风格、色调等），让人一眼看懂这张营销素材的用途。
+
+已收集需求：
+${needsText}
+
+直接输出摘要文本，不要加任何额外前缀。`;
+
+    try {
+      const response = await this.llmClient.invoke(
+        [{ role: 'user', content: summaryPrompt }],
+        { model: 'doubao-seed-2-0-lite-260215', temperature: 0.3 }
+      );
+      const text = (response.content || '').trim();
+      if (text) return text;
+    } catch (e) {
+      console.error('[Summary] 生成失败:', e);
+    }
+
+    // 兜底：拼接字段
+    const parts: string[] = [];
+    if (needs.targetAudience) parts.push(`面向${needs.targetAudience}`);
+    if (needs.usage) parts.push(`用于${needs.usage}`);
+    if (needs.theme) parts.push(needs.theme);
+    if (needs.style) parts.push(`${needs.style}风格`);
+    if (needs.colorTone) parts.push(`${needs.colorTone}色调`);
+    return parts.join('，') || '营销素材图片';
+  }
+
+  /**
+   * 根据使用场景或用户指定的尺寸，映射为 SDK 可接受的 size 参数
+   * SDK 支持：'2K' | '4K' | 'WIDTHxHEIGHT'
+   */
+  private resolveSdkSize(size?: string, usage?: string): string {
+    const source = (size || usage || '').toLowerCase();
+
+    // 用户直接指定了 "WxH" 格式（例如 1080x1080），原样透传
+    const explicitSizeMatch = source.match(/(\d+)\s*[x×]\s*(\d+)/);
+    if (explicitSizeMatch) {
+      const w = parseInt(explicitSizeMatch[1], 10);
+      const h = parseInt(explicitSizeMatch[2], 10);
+      // 限制合理范围，过大回落到 2K
+      if (w > 0 && h > 0 && w <= 4096 && h <= 4096) {
+        return `${w}x${h}`;
+      }
+    }
+
+    // 按常见用途做标准化映射
+    if (source.includes('公众号') || source.includes('banner') || source.includes('微博头图')) {
+      return '900x383';
+    }
+    if (source.includes('朋友圈') || source.includes('1:1') || source.includes('方图')) {
+      return '1024x1024';
+    }
+    if (source.includes('小红书') || source.includes('3:4')) {
+      return '1080x1440';
+    }
+    if (source.includes('视频号') || source.includes('抖音') || source.includes('短视频') || source.includes('9:16') || source.includes('竖版')) {
+      return '1080x1920';
+    }
+    if (source.includes('16:9') || source.includes('横版')) {
+      return '1792x1024';
+    }
+    if (source.includes('4k')) {
+      return '4K';
+    }
+
+    return '2K';
   }
 
   /**
    * 根据提示词生成图片
    * 注意：SDK不支持negativePrompt参数，将其合并到正向提示词中
    */
-  private async generateImageFromPrompts(positivePrompt: string, negativePrompt: string): Promise<string> {
+  private async generateImageFromPrompts(
+    positivePrompt: string,
+    negativePrompt: string,
+    needs?: StructuredNeeds,
+  ): Promise<string> {
     console.log('[Image] 生成图片');
     console.log('[Image] 正向提示词:', positivePrompt);
     console.log('[Image] 负向提示词:', negativePrompt);
-    
+
+    const sdkSize = this.resolveSdkSize(needs?.size, needs?.usage);
+    console.log('[Image] SDK size:', sdkSize);
+
     try {
       // 将负面提示词合并到正向提示词中
       const finalPrompt = `${positivePrompt}，避免出现：${negativePrompt}`;
-      
+
       const response = await this.imageClient.generate({
         prompt: finalPrompt,
-        size: '2K'
+        size: sdkSize,
       });
-      
+
       const helper = this.imageClient.getResponseHelper(response);
-      
+
       if (!helper.success || !helper.imageUrls || helper.imageUrls.length === 0) {
         console.error('[Image] 生成失败:', helper.errorMessages);
         throw new Error(helper.errorMessages?.join(', ') || '图片生成失败');
       }
-      
+
       console.log('[Image] 生成成功，URL:', helper.imageUrls[0]);
-      
+
       return helper.imageUrls[0];
     } catch (e) {
       console.error('[Image] 生成失败:', e);
@@ -471,18 +743,141 @@ export class ImageService {
    * 生成免责文案
    */
   private generateDisclaimer(needs: StructuredNeeds): string {
-    return `免责声明：本图片由AI生成，仅供参考使用。请确保在实际使用前进行合规审核，图片内容不代表任何投资建议或收益承诺。`;
+    const disclaimers: string[] = ['免责声明：本图片由AI生成，仅供参考使用。'];
+    if (needs.targetAudience || needs.usage) {
+      disclaimers.push('请确保在实际使用前进行合规审核');
+    }
+    disclaimers.push('图片内容不代表任何投资建议或收益承诺。');
+    return disclaimers.join('');
   }
 
   /**
-   * 其他阶段处理
+   * 其他阶段处理（已完成后根据用户反馈进行微调）
    */
   private async handleOtherStages(session: SessionData, message: string): Promise<ChatResponse> {
+    console.log('[OtherStages] 处理微调请求');
+
+    session.messages.push({ role: 'user', content: message });
+
+    // 如果 session 没有结构化需求，回退到收集阶段
+    if (!session.structuredNeeds) {
+      return await this.handleCollectingStage(session, message);
+    }
+
+    // 1. 使用 LLM 根据用户反馈更新结构化需求
+    const updatedNeeds = await this.refineNeedsFromFeedback(session.structuredNeeds, message);
+    session.structuredNeeds = { ...session.structuredNeeds, ...updatedNeeds };
+
+    // 重新生成摘要
+    try {
+      session.structuredNeeds.summary = await this.generateSummary(session.structuredNeeds);
+    } catch (e) {
+      console.error('[OtherStages] 摘要重新生成失败:', e);
+    }
+
+    // 2. 合规校验
+    const complianceResult = await this.checkCompliance(session.structuredNeeds);
+    session.complianceResult = complianceResult;
+
+    if (!complianceResult.passed) {
+      session.stage = 'violation';
+      session.messages.push({
+        role: 'assistant',
+        content: `抱歉，您的调整需求未能通过合规校验。${complianceResult.violationAspects}\n\n改进建议：${complianceResult.suggestions}`,
+      });
+      return {
+        stage: 'violation' as SessionStage,
+        reply: `抱歉，您的调整需求未能通过合规校验。`,
+        complianceResult,
+        structuredNeeds: session.structuredNeeds,
+        type: 'violation-warning',
+      };
+    }
+
+    // 3. 重新生成提示词和图片
+    session.stage = 'generating';
+    const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds);
+    const imageUrl = await this.generateImageFromPrompts(positivePrompt, negativePrompt, session.structuredNeeds);
+    session.generatedImage = imageUrl;
+
+    // 4. 保存新图片到数据库
+    await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, complianceResult);
+
+    session.stage = 'completed';
+
+    const summaryText = session.structuredNeeds.summary
+      ? `\n\n最新需求摘要：${session.structuredNeeds.summary}`
+      : '';
+
+    session.messages.push({
+      role: 'assistant',
+      content: `已根据您的反馈重新生成图片！${summaryText}`,
+    });
+
     return {
-      stage: session.stage,
-      reply: '当前对话已完成。如需重新开始，请点击"重新开始"按钮。',
-      type: 'text'
+      stage: 'completed' as SessionStage,
+      reply: `已根据您的反馈重新生成图片！${summaryText}`,
+      structuredNeeds: session.structuredNeeds,
+      complianceResult,
+      generatedImage: imageUrl,
+      disclaimer: this.generateDisclaimer(session.structuredNeeds),
+      type: 'image',
     };
+  }
+
+  /**
+   * 根据用户反馈更新需求字段（微调核心逻辑）
+   */
+  private async refineNeedsFromFeedback(
+    currentNeeds: StructuredNeeds,
+    feedback: string,
+  ): Promise<Partial<StructuredNeeds>> {
+    const refinePrompt = `您是一个图像需求微调专家。用户对刚刚生成的图片不满意，并给出了修改反馈。
+
+当前已确定的需求：
+${formatNeedsForPrompt(currentNeeds)}
+
+用户反馈：
+"${feedback}"
+
+请分析用户的反馈，推断用户对图片的修改要求，并更新对应的需求字段。
+输出严格 JSON 格式，只需要列出被修改或新增的字段。如果用户的反馈没有涉及到某个字段，请勿在 JSON 中包含该字段。
+
+可选字段及含义：
+- theme: 主题内容
+- colorTone: 色调倾向（如 "更蓝", "更暖", "更暗" 等）
+- style: 图片风格
+- scene: 场景描述
+- emotion: 情感基调
+- size: 图片尺寸或比例
+- targetAudience: 目标受众
+- usage: 使用场景
+
+示例输出：
+{"colorTone": "深蓝色", "scene": "室内", "emotion": "更严肃"}`;
+
+    try {
+      const response = await this.llmClient.invoke(
+        [{ role: 'user', content: refinePrompt }],
+        { model: 'doubao-seed-2-0-lite-260215', temperature: 0.3 },
+      );
+      const text = (response.content || '').trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        // 过滤空值
+        Object.keys(parsed).forEach((key) => {
+          if (parsed[key] === '' || parsed[key] === null || parsed[key] === undefined) {
+            delete parsed[key];
+          }
+        });
+        console.log('[Refine] 解析出的修改:', parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error('[Refine] 解析失败:', e);
+    }
+    return {};
   }
 
   /**
@@ -573,18 +968,37 @@ export class ImageService {
     complianceResult: ComplianceResult
   ): Promise<void> {
     console.log('[Save] 保存图片到数据库, userId:', session.userId);
-    
+
     try {
       // 获取 Supabase 客户端
       const supabase = getSupabaseClient();
-      
+
+      const structured = session.structuredNeeds || {};
+      const needsJson = JSON.stringify(structured);
+
+      // 同步保存到内存 map，供后续 adjustImage 微调查取上下文
+      const newImageId = `img_${Date.now()}`;
+      this.generatedImages.set(newImageId, {
+        title: structured.theme || '营销素材',
+        description: structured.summary || positivePrompt,
+        style: structured.style || '',
+        status: complianceResult.passed ? '合规通过' : '待审核',
+        time: '刚刚',
+        url: imageUrl,
+        params: null,
+        prompt: needsJson,
+        structuredNeeds: structured,
+      });
+      // 同时按 image url 做一次反查映射，便于 adjust 时用 url 找到原始需求
+      this.generatedImages.set(`url:${imageUrl}`, this.generatedImages.get(newImageId)!);
+
       const { data, error } = await supabase
         .from('generated_images')
         .insert({
           user_id: session.userId || null,
-          title: session.structuredNeeds?.theme || '营销素材',
-          description: session.structuredNeeds?.summary || '',
-          prompt: JSON.stringify(session.structuredNeeds),
+          title: structured.theme || '营销素材',
+          description: structured.summary || '',
+          prompt: needsJson,
           positive_prompt: positivePrompt,
           negative_prompt: negativePrompt,
           image_url: imageUrl,
@@ -592,7 +1006,7 @@ export class ImageService {
           compliance_note: complianceResult.passed ? null : complianceResult.violationAspects
         })
         .select();
-      
+
       if (error) {
         console.error('[Save] 保存失败:', error);
       } else {
@@ -604,46 +1018,103 @@ export class ImageService {
   }
 
   /**
-   * 图片参数微调（保留原有功能）
+   * 图片参数微调（保留原有功能，同时保留原始需求上下文）
    */
-  async adjustImage(imageId: string, params: any) {
-    console.log('[Adjust] 图片微调:', { imageId, params });
-    
-    // 模拟根据参数重新生成
-    const basePrompt = `投资咨询营销素材，${params.styleType || '专业稳重'}风格`;
-    const adjustedPrompt = `${basePrompt}，${params.colorTone || '蓝灰色'}色调，亮度${params.brightness || 0}，对比度${params.contrast || 0}`;
-    
+  async adjustImage(imageId: string, params: any, imageUrl?: string) {
+    console.log('[Adjust] 图片微调:', { imageId, params, imageUrl });
+
+    // 回查原始需求：先按 imageId 查，再按 imageUrl 反查
+    const original =
+      (imageId ? this.generatedImages.get(imageId) : undefined) ||
+      (imageUrl ? this.generatedImages.get(`url:${imageUrl}`) : undefined);
+    const originalPrompt = original?.prompt || original?.structuredNeeds;
+
+    const basePromptParts: string[] = [];
+    if (originalPrompt) {
+      if (typeof originalPrompt === 'string') {
+        try {
+          const parsed = JSON.parse(originalPrompt);
+          if (parsed && typeof parsed === 'object') {
+            const structured = parsed as StructuredNeeds;
+            if (structured.theme) basePromptParts.push(structured.theme);
+            if (structured.targetAudience) basePromptParts.push(`面向${structured.targetAudience}`);
+            if (structured.usage) basePromptParts.push(`用于${structured.usage}`);
+            if (structured.colorTone) basePromptParts.push(`${structured.colorTone}色调`);
+            if (structured.style) basePromptParts.push(`${structured.style}风格`);
+            if (structured.scene) basePromptParts.push(structured.scene);
+            if (structured.emotion) basePromptParts.push(`${structured.emotion}氛围`);
+          }
+        } catch {
+          basePromptParts.push(originalPrompt);
+        }
+      } else {
+        const structured = originalPrompt as StructuredNeeds;
+        if (structured.theme) basePromptParts.push(structured.theme);
+        if (structured.targetAudience) basePromptParts.push(`面向${structured.targetAudience}`);
+        if (structured.usage) basePromptParts.push(`用于${structured.usage}`);
+        if (structured.colorTone) basePromptParts.push(`${structured.colorTone}色调`);
+        if (structured.style) basePromptParts.push(`${structured.style}风格`);
+        if (structured.scene) basePromptParts.push(structured.scene);
+        if (structured.emotion) basePromptParts.push(`${structured.emotion}氛围`);
+      }
+    }
+
+    // 用户新传入的微调参数优先级更高，覆盖原始需求中的对应字段
+    if (params.styleType) basePromptParts.push(`${params.styleType}风格`);
+    if (params.colorTone) basePromptParts.push(`${params.colorTone}色调`);
+    const brightness = typeof params.brightness === 'number' ? params.brightness : 0;
+    const contrast = typeof params.contrast === 'number' ? params.contrast : 0;
+    basePromptParts.push(`亮度${brightness}，对比度${contrast}`);
+
+    // 如果没有任何原始需求或参数，给一个保底
+    if (basePromptParts.length === 0) {
+      basePromptParts.push('投资咨询专业营销素材');
+    }
+
+    const adjustedPrompt = `${basePromptParts.join('，')}，专业商务摄影，高清`;
+
+    // 解析原始需求中的 size/usage，保持原始比例
+    let sizeHint: string | undefined;
+    if (originalPrompt && typeof originalPrompt !== 'string') {
+      const structured = originalPrompt as StructuredNeeds;
+      sizeHint = structured.size || this.inferSizeFromUsage(structured.usage);
+    }
+
     try {
+      const sdkSize = this.resolveSdkSize(sizeHint);
       const response = await this.imageClient.generate({
         prompt: adjustedPrompt,
-        size: '2K'
+        size: sdkSize,
       });
-      
+
       const helper = this.imageClient.getResponseHelper(response);
-      
+
       if (!helper.success || !helper.imageUrls || helper.imageUrls.length === 0) {
         throw new Error(helper.errorMessages?.join(', ') || '图片生成失败');
       }
-      
+
       const newImageUrl = helper.imageUrls[0];
       const newImageId = `img_${Date.now()}`;
-      
-      // 存储新图片数据
+
+      // 存储新图片数据，同时保留原始需求
       this.generatedImages.set(newImageId, {
         title: '微调后的图片',
         description: adjustedPrompt,
-        style: params.styleType,
+        style: params.styleType || original?.style || '',
         status: '合规通过',
         time: '刚刚',
         url: newImageUrl,
-        params
+        params,
+        prompt: typeof originalPrompt === 'string' ? originalPrompt : JSON.stringify(originalPrompt || {}),
+        structuredNeeds: originalPrompt,
       });
-      
+      this.generatedImages.set(`url:${newImageUrl}`, this.generatedImages.get(newImageId)!);
+
       return {
         imageUrl: newImageUrl,
         imageId: newImageId,
         params,
-        message: '图片已根据您的参数重新生成'
+        message: '图片已根据您的参数重新生成',
       };
     } catch (e) {
       console.error('[Adjust] 微调失败:', e);
