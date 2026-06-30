@@ -28,6 +28,7 @@ export interface StructuredNeeds {
   targetAudience?: string;
   usage?: string;
   summary?: string;
+  content?: string;
 }
 
 // 字段中文标签映射，集中维护，避免多处硬编码
@@ -41,10 +42,11 @@ const NEED_FIELD_LABELS: Record<keyof StructuredNeeds, string> = {
   targetAudience: '目标受众',
   usage: '使用场景',
   summary: '需求摘要',
+  content: '图片内容'
 };
 
 // 必填字段
-const REQUIRED_NEED_FIELDS: Array<keyof StructuredNeeds> = ['theme', 'colorTone', 'style'];
+const REQUIRED_NEED_FIELDS: Array<keyof StructuredNeeds> = ['theme', 'content', 'colorTone', 'style'];
 
 // 可选但建议收集的字段
 const OPTIONAL_NEED_FIELDS: Array<keyof StructuredNeeds> = [
@@ -85,6 +87,8 @@ export interface ChatResponse {
   generatedImage?: string;
   disclaimer?: string;
   type: string;
+  /** 处理中的状态文本，用于前端在等待期间展示（如 "素材生成中..."） */
+  processingText?: string;
 }
 
 /**
@@ -212,32 +216,34 @@ export class ImageService {
     const missingOptional = OPTIONAL_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
 
     if (isComplete && session.structuredNeeds) {
-      // 必填字段已齐全
+      // 必填字段已齐全 —— 自动进入合规 + 生成流程，不再等待用户确认
+      console.log('[Collecting] 必填字段齐全，自动进入生成流程');
+
       const triggerWords = ['生成', '开始', '确认', '就这样', '出图', 'go', 'generate', 'start'];
       const userSaysGenerate = triggerWords.some((w) =>
         message.trim().toLowerCase().includes(w.toLowerCase()),
       );
 
-      // 如果用户明确要求生成，直接进入生成流程，不再追问可选字段
+      // 如果用户说"重新生成"之类的词，直接走生成流程
       if (userSaysGenerate) {
         return await this.proceedToGeneration(session);
       }
 
-      // 还有可选字段未收集，主动询问一次
-      if (missingOptional.length > 0) {
-        // 如果 LLM 已经根据上下文给出了自然引导，就用它；否则用模板
-        const optionalHint =
-          llmReply && llmReply.length < 60
-            ? llmReply
-            : `信息已基本齐全。为了让素材更贴合实际用途，${this.describeOptionalField(missingOptional[0])}？如果暂时没有更多要求，直接回复「生成」即可进入下一步。`;
-        session.messages.push({ role: 'assistant', content: optionalHint });
-        return {
-          stage: 'collecting' as SessionStage,
-          reply: optionalHint,
-          structuredNeeds: session.structuredNeeds,
-          type: 'text',
-        };
-      }
+      // // 还有可选字段未收集，主动询问一次
+      // if (missingOptional.length > 0) {
+      //   // 如果 LLM 已经根据上下文给出了自然引导，就用它；否则用模板
+      //   const optionalHint =
+      //     llmReply && llmReply.length < 60
+      //       ? llmReply
+      //       : `信息已基本齐全。为了让素材更贴合实际用途，${this.describeOptionalField(missingOptional[0])}？如果暂时没有更多要求，直接回复「生成」即可进入下一步。`;
+      //   session.messages.push({ role: 'assistant', content: optionalHint });
+      //   return {
+      //     stage: 'collecting' as SessionStage,
+      //     reply: optionalHint,
+      //     structuredNeeds: session.structuredNeeds,
+      //     type: 'text',
+      //   };
+      // }
 
       // 所有字段都收集齐了，进入生成流程
       return await this.proceedToGeneration(session);
@@ -337,7 +343,8 @@ export class ImageService {
         complianceResult,
         generatedImage: imageUrl,
         disclaimer,
-        type: 'text'
+        type: 'image',
+        processingText: '素材生成中...',
       };
     } else {
       // 合规未通过，返回违规提示
@@ -822,6 +829,7 @@ ${needsText}
       generatedImage: imageUrl,
       disclaimer: this.generateDisclaimer(session.structuredNeeds),
       type: 'image',
+      processingText: '素材生成中...',
     };
   }
 

@@ -18,8 +18,36 @@ interface Message {
   role: 'user' | 'agent' | 'system';
   content: string;
   timestamp: Date;
-  type?: 'text' | 'image' | 'compliance-result' | 'violation-warning';
+  type?: 'text' | 'image' | 'compliance-result' | 'violation-warning' | 'thinking';
   data?: any;
+}
+
+/**
+ * 根据当前对话阶段和用户最新消息，推断给用户的"处理中"提示
+ */
+function getProcessingHint(
+  stage: SessionState['stage'],
+  latestUserMessage: string,
+): string | null {
+  const msg = latestUserMessage.trim();
+  const stageLabelMap: Record<string, string> = {
+    collecting: '正在分析您的需求...',
+    'compliance-checking': '正在进行合规校验...',
+    generating: '正在为您生成素材...',
+    completed: '正在调整并生成新素材...',
+    violation: '正在分析您的修改意见...',
+  };
+
+  // 如果当前在 collecting，且消息已经表达了完整意图，会自动进入生成流程
+  if (stage === 'collecting') {
+    const autoGenerateTrigger = /生成|开始|确认|就这样|出图|开始做/.test(msg);
+    if (autoGenerateTrigger) {
+      return '正在进行合规校验并生成素材，请稍候...';
+    }
+    return stageLabelMap.collecting;
+  }
+
+  return stageLabelMap[stage] || '正在处理您的请求...';
 }
 
 /**
@@ -70,6 +98,19 @@ const IndexPage = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsProcessing(true);
+
+    // 根据当前阶段给出不同的"处理中"提示，让用户感知到后台在做什么
+    const processingHint = getProcessingHint(sessionState.stage, userMessage.content);
+    if (processingHint) {
+      const tempMessage: Message = {
+        id: `msg_${Date.now()}_thinking`,
+        role: 'agent',
+        content: processingHint,
+        timestamp: new Date(),
+        type: 'thinking',
+      };
+      setMessages(prev => [...prev, tempMessage]);
+    }
     
     try {
       const userInfo = Taro.getStorageSync('userInfo') || {};
@@ -108,7 +149,10 @@ const IndexPage = () => {
           complianceResult: data.complianceResult,
           generatedImage: data.generatedImage
         }));
-        
+
+        // 移除之前添加的 thinking 占位消息（用真实的 reply / image 替换它的位置）
+        setMessages(prev => prev.filter((m) => m.type !== 'thinking'));
+
         if (data.reply) {
           const agentMessage: Message = {
             id: `msg_${Date.now()}_agent`,
@@ -160,6 +204,7 @@ const IndexPage = () => {
           setMessages(prev => [...prev, imageMessage]);
         }
       } else {
+        setMessages(prev => prev.filter((m) => m.type !== 'thinking'));
         const errorMessage: Message = {
           id: `msg_${Date.now()}_error`,
           role: 'system',
@@ -171,6 +216,7 @@ const IndexPage = () => {
       }
     } catch (error) {
       console.error('对话API调用失败:', error);
+      setMessages(prev => prev.filter((m) => m.type !== 'thinking'));
       const errorMessage: Message = {
         id: `msg_${Date.now()}_error`,
         role: 'system',
@@ -233,6 +279,17 @@ const IndexPage = () => {
 
   // 渲染消息内容
   const renderMessage = (message: Message) => {
+    if (message.type === 'thinking') {
+      return (
+        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+          <LoaderCircle size={14} color="#64748B" className="animate-spin" />
+          <Text style={{ fontSize: '14px', color: '#475569', marginLeft: '6px' }}>
+            {message.content}
+          </Text>
+        </View>
+      );
+    }
+
     if (message.type === 'image') {
       return (
         <Card style={{
@@ -442,8 +499,8 @@ const IndexPage = () => {
           </View>
         ))}
         
-        {/* 处理中状态 */}
-        {isProcessing && (
+        {/* 处理中状态（已通过 thinking 消息展示，此处保留兜底 loading） */}
+        {isProcessing && !messages.some((m) => m.type === 'thinking') && (
           <View style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
             <View style={{
               display: 'flex',
@@ -458,7 +515,7 @@ const IndexPage = () => {
             >
               <LoaderCircle size={18} color="#64748B" style={{ marginRight: '8px' }} className="animate-spin" />
               <Text style={{ fontSize: '14px', color: '#64748B' }}>
-                正在思考...
+                正在处理您的请求...
               </Text>
             </View>
           </View>
