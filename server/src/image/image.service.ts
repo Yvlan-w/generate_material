@@ -135,11 +135,18 @@ export class ImageService {
     // 构建需求收集Agent提示词
     const collectPrompt = this.buildCollectAgentPrompt(session);
     
-    // 调用LLM进行需求收集
+    // 调用LLM进行需求收集 - 将提示词作为系统消息传入
     const llmResponse = await this.llmClient.invoke(
-      session.messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      [
+        { role: 'system' as const, content: collectPrompt },
+        ...session.messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+      ],
       { model: 'doubao-seed-2-0-lite-260215', temperature: 0.7 }
     );
+    
+    // 使用LLM响应作为引导回复
+    const guideReplyFromLLM = llmResponse.content;
+    console.log('[Collecting] LLM引导回复:', guideReplyFromLLM);
     
     // 分析用户消息，提取需求字段
     const extractedNeeds = await this.extractNeedsFromMessage(message, session);
@@ -224,8 +231,8 @@ export class ImageService {
       // 继续收集需求
       console.log('[Collecting] 继续收集需求');
       
-      // 生成引导回复
-      const guideReply = await this.generateGuideReply(session);
+      // 使用LLM生成的智能引导回复
+      const guideReply = guideReplyFromLLM;
       
       // 记录Agent回复
       session.messages.push({ role: 'assistant', content: guideReply });
@@ -307,10 +314,9 @@ export class ImageService {
   }
 
   /**
-   * 生成引导回复
+   * 生成引导回复（备用方案，当LLM调用失败时使用）
    */
   private generateGuideReply(session: SessionData): string {
-    const collectedFields = Array.from(session.collectedFields);
     const missingFields = ['theme', 'colorTone', 'style'].filter(f => !session.collectedFields.has(f));
     
     if (missingFields.length === 0) {
