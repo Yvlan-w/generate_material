@@ -56,9 +56,9 @@ export default function LoginPage() {
         duration: 1500
       })
 
-      // 跳转到首页（使用 redirectTo，因为首页不是原生 tabBar 页面）
+      // 跳转到首页（使用 switchTab，因为首页是 tabBar 页面）
       setTimeout(() => {
-        Taro.redirectTo({ url: '/pages/index/index' })
+        Taro.switchTab({ url: '/pages/index/index' })
       }, 1500)
 
     } catch (error: any) {
