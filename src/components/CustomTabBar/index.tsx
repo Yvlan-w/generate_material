@@ -20,8 +20,11 @@ const CustomTabBar = () => {
     setIsAdmin(adminFlag === true)
 
     // 获取当前页面路径
-    const currentPage = Taro.getCurrentPages()?.[0]?.route || 'pages/index/index'
-    setCurrentPath(`/${currentPage}`)
+    const pages = Taro.getCurrentPages()
+    if (pages && pages.length > 0) {
+      const currentPage = pages[pages.length - 1].route || 'pages/index/index'
+      setCurrentPath(`/${currentPage}`)
+    }
   }, [])
 
   // 基础 Tab 列表（所有用户可见）
@@ -55,26 +58,31 @@ const CustomTabBar = () => {
 
   const handleTabClick = (tab: TabItem) => {
     if (currentPath === tab.pagePath) return
-    Taro.switchTab({ url: tab.pagePath })
+    // 使用 switchTab 跳转到 tabBar 页面
+    Taro.switchTab({ url: tab.pagePath }).catch(err => {
+      console.error('TabBar 跳转失败:', err)
+    })
   }
 
   return (
-    <View style={{
-      position: 'fixed',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      display: 'flex',
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      height: '60px',
-      backgroundColor: '#FFFFFF',
-      borderTop: '1px solid #E5E7EB',
-      paddingBottom: '10px',
-      boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
-      zIndex: 1000
-    }}
+    <View
+      className="custom-tabbar"
+      style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        height: '50px',
+        backgroundColor: '#FFFFFF',
+        borderTop: '1px solid #E5E7EB',
+        boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
+        zIndex: 9999,
+        paddingBottom: 'env(safe-area-inset-bottom)'
+      }}
     >
       {tabs.map((tab, index) => {
         const isActive = currentPath === tab.pagePath
@@ -83,12 +91,14 @@ const CustomTabBar = () => {
         return (
           <View
             key={index}
+            className="tab-item"
             style={{
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              cursor: 'pointer'
             }}
             onClick={() => handleTabClick(tab)}
           >
@@ -97,9 +107,10 @@ const CustomTabBar = () => {
               color={isActive ? '#1E40AF' : '#6B7280'}
             />
             <Text
+              className="tab-text"
               style={{
                 fontSize: '12px',
-                marginTop: '2px',
+                marginTop: '4px',
                 color: isActive ? '#1E40AF' : '#6B7280'
               }}
             >
