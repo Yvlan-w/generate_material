@@ -141,6 +141,13 @@ const IndexPage = () => {
       
       const { code, msg, data } = response.data;
       
+      console.log('[DEBUG] API response code:', code);
+      console.log('[DEBUG] API response data:', JSON.stringify(data, null, 2));
+      console.log('[DEBUG] Has reply:', !!data.reply);
+      console.log('[DEBUG] Has generatedImage:', !!data.generatedImage);
+      console.log('[DEBUG] Stage:', data.stage);
+      console.log('[DEBUG] Type:', data.type);
+      
       if (code === 200) {
         setSessionState(prev => ({
           ...prev,

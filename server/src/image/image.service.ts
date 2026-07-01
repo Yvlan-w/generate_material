@@ -20,6 +20,7 @@ export interface SessionData {
 
 export interface StructuredNeeds {
   theme?: string;
+  content?: string;
   colorTone?: string;
   scene?: string;
   emotion?: string;
@@ -28,12 +29,12 @@ export interface StructuredNeeds {
   targetAudience?: string;
   usage?: string;
   summary?: string;
-  content?: string;
 }
 
 // 字段中文标签映射，集中维护，避免多处硬编码
 const NEED_FIELD_LABELS: Record<keyof StructuredNeeds, string> = {
   theme: '主题内容',
+  content: '图片内容',
   colorTone: '色调倾向',
   scene: '场景描述',
   emotion: '情感基调',
@@ -41,8 +42,7 @@ const NEED_FIELD_LABELS: Record<keyof StructuredNeeds, string> = {
   size: '图片尺寸',
   targetAudience: '目标受众',
   usage: '使用场景',
-  summary: '需求摘要',
-  content: '图片内容'
+  summary: '需求摘要'
 };
 
 // 必填字段
@@ -123,11 +123,18 @@ export class ImageService {
    * 根据当前状态决定下一步行动
    */
   async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string): Promise<ChatResponse> {
-    console.log(`[Chat] Session: ${sessionId}, Stage: ${currentStage}, Message: ${message}, User: ${userId}`);
+    console.log(`\n===========================================`);
+    console.log(`[Chat] NEW REQUEST`);
+    console.log(`[Chat] Session: ${sessionId}`);
+    console.log(`[Chat] Current Stage: ${currentStage}`);
+    console.log(`[Chat] User Message: "${message}"`);
+    console.log(`[Chat] User ID: ${userId}`);
+    console.log(`===========================================`);
     
     // 获取或创建session数据
     let session = this.sessions.get(sessionId);
     if (!session) {
+      console.log(`[Chat] Creating new session: ${sessionId}`);
       session = {
         sessionId,
         userId,
@@ -136,6 +143,10 @@ export class ImageService {
         collectedFields: new Set()
       };
       this.sessions.set(sessionId, session);
+    } else {
+      console.log(`[Chat] Found existing session`);
+      console.log(`[Chat] Session collectedFields: ${Array.from(session.collectedFields)}`);
+      console.log(`[Chat] Session structuredNeeds:`, JSON.stringify(session.structuredNeeds));
     }
     
     // 更新 userId（如果之前没有设置）
@@ -149,19 +160,28 @@ export class ImageService {
     // 根据当前阶段处理
     switch (currentStage) {
       case 'collecting':
+        console.log(`[Chat] → Calling handleCollectingStage`);
         return await this.handleCollectingStage(session, message);
       
       case 'violation':
-        // 违规后重新收集需求
+        console.log(`[Chat] → Stage is violation, resetting to collecting`);
         session.stage = 'collecting';
         return await this.handleCollectingStage(session, message);
       
       case 'compliance-checking':
+        console.log(`[Chat] → Stage is compliance-checking, calling handleOtherStages`);
+        return await this.handleOtherStages(session, message);
+      
       case 'generating':
+        console.log(`[Chat] → Stage is generating, calling handleOtherStages`);
+        return await this.handleOtherStages(session, message);
+      
       case 'completed':
+        console.log(`[Chat] → Stage is completed, calling handleOtherStages (fine-tuning)`);
         return await this.handleOtherStages(session, message);
       
       default:
+        console.log(`[Chat] → Unknown stage ${currentStage}, fallback to handleCollectingStage`);
         return await this.handleCollectingStage(session, message);
     }
   }
@@ -171,10 +191,16 @@ export class ImageService {
    * 逐步引导用户表达需求
    */
   private async handleCollectingStage(session: SessionData, message: string): Promise<ChatResponse> {
-    console.log('[Collecting] 处理需求收集阶段');
+    console.log(`\n-------------------------------------------`);
+    console.log(`[Collecting] ENTER handleCollectingStage`);
+    console.log(`[Collecting] Input message: "${message}"`);
+    console.log(`[Collecting] Current collectedFields: ${Array.from(session.collectedFields)}`);
+    console.log(`[Collecting] Current structuredNeeds:`, JSON.stringify(session.structuredNeeds));
+    console.log(`-------------------------------------------`);
 
     // 构建需求收集Agent提示词（作为 system 消息注入，让 LLM Agent 真正生效）
     const collectPrompt = this.buildCollectAgentPrompt(session);
+    console.log(`[Collecting] collectPrompt length: ${collectPrompt.length}`);
 
     // 将 system 提示词 + 历史对话 + 当前用户消息合并传给 LLM
     const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -188,36 +214,49 @@ export class ImageService {
     // 调用 LLM 进行需求收集（让 Agent 基于上下文给出引导回复）
     let llmReply = '';
     try {
+      console.log(`[Collecting] Calling LLM for agent reply...`);
       const llmResponse = await this.llmClient.invoke(llmMessages, {
         model: 'doubao-seed-2-0-lite-260215',
         temperature: 0.7,
       });
       llmReply = (llmResponse.content || '').trim();
+      console.log(`[Collecting] LLM reply received: "${llmReply}"`);
     } catch (e) {
       console.error('[Collecting] LLM Agent 调用失败，将回退到模板回复:', e);
       llmReply = '';
     }
 
     // 分析用户消息，提取需求字段
+    console.log(`[Collecting] Calling extractNeedsFromMessage...`);
     const extractedNeeds = await this.extractNeedsFromMessage(message, session);
+    console.log(`[Collecting] extractedNeeds result:`, JSON.stringify(extractedNeeds));
 
     // 更新已收集的字段
     if (extractedNeeds) {
       Object.keys(extractedNeeds).forEach((key) => {
-        if ((extractedNeeds as any)[key]) {
+        const value = (extractedNeeds as any)[key];
+        if (value) {
+          console.log(`[Collecting] Adding field "${key}" with value "${value}"`);
           session.collectedFields.add(key);
-          session.structuredNeeds = { ...session.structuredNeeds, ...extractedNeeds };
         }
       });
+      // 合并新提取的字段到 structuredNeeds，确保不丢失之前的值
+      session.structuredNeeds = { ...session.structuredNeeds, ...extractedNeeds };
+      console.log(`[Collecting] structuredNeeds after merge:`, JSON.stringify(session.structuredNeeds));
     }
 
     // 检查是否已收集完整（仅以必填字段为准，可选字段缺失也不阻塞生成）
     const isComplete = REQUIRED_NEED_FIELDS.every((field) => session.collectedFields.has(field));
     const missingOptional = OPTIONAL_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
+    
+    console.log(`[Collecting] REQUIRED_NEED_FIELDS: ${REQUIRED_NEED_FIELDS}`);
+    console.log(`[Collecting] isComplete: ${isComplete}`);
+    console.log(`[Collecting] After update - collectedFields: ${Array.from(session.collectedFields)}`);
+    console.log(`[Collecting] After update - structuredNeeds:`, JSON.stringify(session.structuredNeeds));
 
     if (isComplete && session.structuredNeeds) {
       // 必填字段已齐全 —— 自动进入合规 + 生成流程，不再等待用户确认
-      console.log('[Collecting] 必填字段齐全，自动进入生成流程');
+      console.log(`[Collecting] ✅ REQUIRED FIELDS ARE COMPLETE! Auto-proceeding to generation`);
 
       const triggerWords = ['生成', '开始', '确认', '就这样', '出图', 'go', 'generate', 'start'];
       const userSaysGenerate = triggerWords.some((w) =>
@@ -226,35 +265,28 @@ export class ImageService {
 
       // 如果用户说"重新生成"之类的词，直接走生成流程
       if (userSaysGenerate) {
+        console.log(`[Collecting] User said generate trigger word, skipping status message`);
         return await this.proceedToGeneration(session);
       }
 
-      // // 还有可选字段未收集，主动询问一次
-      // if (missingOptional.length > 0) {
-      //   // 如果 LLM 已经根据上下文给出了自然引导，就用它；否则用模板
-      //   const optionalHint =
-      //     llmReply && llmReply.length < 60
-      //       ? llmReply
-      //       : `信息已基本齐全。为了让素材更贴合实际用途，${this.describeOptionalField(missingOptional[0])}？如果暂时没有更多要求，直接回复「生成」即可进入下一步。`;
-      //   session.messages.push({ role: 'assistant', content: optionalHint });
-      //   return {
-      //     stage: 'collecting' as SessionStage,
-      //     reply: optionalHint,
-      //     structuredNeeds: session.structuredNeeds,
-      //     type: 'text',
-      //   };
-      // }
+      // 展示一个"正在为您生成"的状态提示，再调用生成流程
+      session.messages.push({
+        role: 'assistant',
+        content: '需求已收集完整，正在为您进行合规校验并生成素材，请稍候...',
+      });
 
-      // 所有字段都收集齐了，进入生成流程
+      console.log(`[Collecting] Calling proceedToGeneration...`);
       return await this.proceedToGeneration(session);
     } else {
       // 继续收集需求
-      console.log('[Collecting] 继续收集需求');
+      console.log(`[Collecting] ⏳ Not complete. isComplete=${isComplete}, structuredNeeds=${!!session.structuredNeeds}`);
 
       // 优先使用 LLM 基于上下文生成的引导回复，确保贴合对话语境
       const guideReply = llmReply && llmReply.length > 0 && llmReply.length < 80
         ? llmReply
         : await this.generateGuideReply(session);
+
+      console.log(`[Collecting] Guide reply to user: "${guideReply}"`);
 
       // 记录Agent回复
       session.messages.push({ role: 'assistant', content: guideReply });
@@ -286,45 +318,67 @@ export class ImageService {
    * 进入合规校验 + 生成流程
    */
   private async proceedToGeneration(session: SessionData): Promise<ChatResponse> {
-    console.log('[Collecting] 需求收集完成，进入合规校验');
+    console.log(`\n===========================================`);
+    console.log(`[Generation] ENTER proceedToGeneration`);
+    console.log(`[Generation] structuredNeeds:`, JSON.stringify(session.structuredNeeds));
+    console.log(`[Generation] collectedFields: ${Array.from(session.collectedFields)}`);
+    console.log(`===========================================`);
+
     session.stage = 'compliance-checking';
+    console.log(`[Generation] Stage updated to: compliance-checking`);
 
     // 先生成需求摘要（存入 summary 字段，用于前端展示和存库）
+    console.log(`[Generation] Step 1: Generating summary...`);
     try {
       const summary = await this.generateSummary(session.structuredNeeds!);
       session.structuredNeeds = { ...session.structuredNeeds!, summary };
       session.collectedFields.add('summary');
+      console.log(`[Generation] Summary generated: "${summary}"`);
     } catch (e) {
-      console.error('[Collecting] 摘要生成失败:', e);
+      console.error('[Generation] 摘要生成失败:', e);
     }
 
     // 调用合规校验
+    console.log(`[Generation] Step 2: Calling checkCompliance...`);
     const complianceResult = await this.checkCompliance(session.structuredNeeds!);
     session.complianceResult = complianceResult;
+    console.log(`[Generation] Compliance result:`, JSON.stringify(complianceResult));
 
     if (complianceResult.passed) {
+      console.log(`[Generation] ✅ Compliance PASSED`);
+
       // 合规通过，进入图片生成
       session.stage = 'generating';
+      console.log(`[Generation] Stage updated to: generating`);
 
       // 生成正负提示词
+      console.log(`[Generation] Step 3: Generating prompts...`);
       const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds!);
+      console.log(`[Generation] Positive prompt: "${positivePrompt.substring(0, 100)}..."`);
+      console.log(`[Generation] Negative prompt: "${negativePrompt}"`);
 
       // 生成图片（透传原始需求，让 size/usage 映射为 SDK 的 size 参数）
+      console.log(`[Generation] Step 4: Generating image...`);
       const imageUrl = await this.generateImageFromPrompts(
         positivePrompt,
         negativePrompt,
         session.structuredNeeds,
       );
+      console.log(`[Generation] Image generated: "${imageUrl}"`);
       session.generatedImage = imageUrl;
 
       // 保存到数据库
+      console.log(`[Generation] Step 5: Saving to database...`);
       await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, complianceResult);
+      console.log(`[Generation] Saved to database successfully`);
 
       // 标记完成
       session.stage = 'completed';
+      console.log(`[Generation] Stage updated to: completed`);
 
       // 生成免责文案
       const disclaimer = this.generateDisclaimer(session.structuredNeeds!);
+      console.log(`[Generation] Disclaimer: "${disclaimer}"`);
 
       const summaryText = session.structuredNeeds?.summary
         ? `\n\n需求摘要：${session.structuredNeeds.summary}`
@@ -336,6 +390,7 @@ export class ImageService {
         content: `您的营销素材图片已生成完成！${summaryText}`
       });
 
+      console.log(`[Generation] ✅ ALL DONE! Returning ChatResponse with image`);
       return {
         stage: 'completed' as SessionStage,
         reply: `您的营销素材图片已生成完成！${summaryText}`,
@@ -347,8 +402,11 @@ export class ImageService {
         processingText: '素材生成中...',
       };
     } else {
+      console.log(`[Generation] ❌ Compliance FAILED`);
+
       // 合规未通过，返回违规提示
       session.stage = 'violation';
+      console.log(`[Generation] Stage updated to: violation`);
 
       session.messages.push({
         role: 'assistant',
@@ -404,6 +462,12 @@ export class ImageService {
    * 从用户消息中提取需求字段
    */
   private async extractNeedsFromMessage(message: string, session: SessionData): Promise<Partial<StructuredNeeds> | null> {
+    console.log(`\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`);
+    console.log(`[Extract] ENTER extractNeedsFromMessage`);
+    console.log(`[Extract] Input message: "${message}"`);
+    console.log(`[Extract] Existing needs:`, JSON.stringify(session.structuredNeeds));
+    console.log(`~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~`);
+
     const extractPrompt = `分析用户输入，提取图片生成需求字段。
 
 用户输入：${message}
@@ -424,28 +488,37 @@ ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
 输出严格 JSON 格式，例如：
 {"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重","targetAudience":"高净值客户","usage":"朋友圈","size":"1:1"}`;
 
+    console.log(`[Extract] Calling LLM for extraction...`);
     const response = await this.llmClient.invoke(
       [{ role: 'user', content: extractPrompt }],
       { model: 'doubao-seed-2-0-lite-260215', temperature: 0.3 }
     );
     
+    console.log(`[Extract] LLM raw response: "${response.content}"`);
+    
     // 解析JSON
     try {
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      console.log(`[Extract] JSON match found: ${!!jsonMatch}`);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        console.log(`[Extract] Parsed result:`, JSON.stringify(parsed));
+        
         // 过滤空字符串/空值
         Object.keys(parsed).forEach((key) => {
           if (parsed[key] === '' || parsed[key] === null || parsed[key] === undefined) {
             delete parsed[key];
           }
         });
+        
+        console.log(`[Extract] Final filtered result:`, JSON.stringify(parsed));
         return parsed;
       }
     } catch (e) {
       console.error('[Extract] 解析失败:', e);
     }
     
+    console.log(`[Extract] Returning null (no valid JSON found)`);
     return null;
   }
 
