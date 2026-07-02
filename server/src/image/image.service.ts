@@ -300,19 +300,6 @@ export class ImageService {
     }
   }
 
-  /**
-   * 可选字段的自然语言描述，用于提示用户补充
-   */
-  private describeOptionalField(field: keyof StructuredNeeds): string {
-    const map: Record<string, string> = {
-      targetAudience: '这次图片主要面向哪类受众（如高净值客户、年轻投资者等）',
-      usage: '这张图片会用在哪里（如朋友圈、公众号头图、海报等）',
-      size: '图片希望的尺寸或比例（如 1:1、16:9、竖版海报等）',
-      scene: '图片希望呈现的场景（如办公室、会议室等）',
-      emotion: '希望图片传达的情感基调（如专业、温暖、活力等）',
-    };
-    return map[field] || `是否补充「${NEED_FIELD_LABELS[field]}」信息`;
-  }
 
   /**
    * 进入合规校验 + 生成流程
@@ -476,7 +463,9 @@ export class ImageService {
 ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
 
 请尽可能提取以下字段（未提到的字段留空字符串，不要编造）：
+
 - theme: 主题内容（如品牌宣传、团队风采、数据可视化等）
+- content: 内容描述（如品牌介绍、产品展示、案例分析等） 
 - colorTone: 色调倾向（如蓝色、灰色、暖色调等）
 - style: 图片风格（如专业稳重、现代简约、科技感等）
 - scene: 场景描述（如办公室、会议室等）
