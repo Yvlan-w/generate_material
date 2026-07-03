@@ -882,15 +882,30 @@ ${needsText}
 
     const sdkSize = this.resolveSdkSize(needs?.size, needs?.usage);
     console.log('[Image] SDK size:', sdkSize);
+    
+    const referenceImages = needs?.referenceImages || [];
+    console.log('[Image] 参考图片数量:', referenceImages.length);
+    if (referenceImages.length > 0) {
+      console.log('[Image] 参考图片:', referenceImages.map(img => img.url).join(', '));
+    }
 
     try {
-      // 将负面提示词合并到正向提示词中
       const finalPrompt = `${positivePrompt}，避免出现：${negativePrompt}`;
 
-      const response = await this.imageClient.generate({
+      const generateParams: {
+        prompt: string;
+        size: string;
+        referenceImages?: string[];
+      } = {
         prompt: finalPrompt,
         size: sdkSize,
-      });
+      };
+      
+      if (referenceImages.length > 0) {
+        generateParams.referenceImages = referenceImages.map(img => img.url);
+      }
+
+      const response = await this.imageClient.generate(generateParams as any);
 
       const helper = this.imageClient.getResponseHelper(response);
 
