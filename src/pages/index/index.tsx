@@ -280,7 +280,8 @@ const IndexPage = () => {
                 throw new Error('未获取到文件对象');
               }
 
-              const uploadUrl = `${PROJECT_DOMAIN}/api/image/upload`;
+              // H5 端使用相对路径，Vite proxy 会自动代理到后端
+              const uploadUrl = '/api/image/upload';
               const uploadPromises = tempFiles.map((file) => {
                 const formData = new FormData();
                 formData.append('image', file);
@@ -288,8 +289,7 @@ const IndexPage = () => {
 
                 return fetch(uploadUrl, {
                   method: 'POST',
-                  body: formData,
-                  credentials: 'include'
+                  body: formData
                 }).then(resp => resp.json());
               });
 

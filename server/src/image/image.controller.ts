@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, Query, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ImageService } from './image.service';
 
 /**
@@ -117,5 +118,51 @@ export class ImageController {
       msg: 'success',
       data: result
     };
+  }
+
+  /**
+   * 图片上传接口
+   * POST /api/image/upload
+   * 支持用户上传参考图片
+   */
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('image', {
+    limits: { fileSize: 10 * 1024 * 1024 },  // 最大 10MB
+  }))
+  async uploadImage(@UploadedFile() file: { buffer?: Buffer; path?: string; originalname?: string; size?: number }) {
+    console.log('[API] Upload request, file:', file?.originalname, file?.size);
+    
+    if (!file) {
+      return {
+        code: 400,
+        msg: '没有接收到文件',
+        data: null
+      };
+    }
+    
+    try {
+      // 使用 file.buffer（必须存在）
+      if (!file.buffer) {
+        return {
+          code: 400,
+          msg: '文件数据为空',
+          data: null
+        };
+      }
+      const url = await this.imageService.uploadImage(file.buffer, file.originalname);
+      
+      return {
+        code: 200,
+        msg: 'success',
+        data: { url, filename: file.originalname }
+      };
+    } catch (error) {
+      console.error('[API] Upload error:', error);
+      return {
+        code: 500,
+        msg: '上传失败',
+        data: null
+      };
+    }
   }
 }

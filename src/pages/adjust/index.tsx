@@ -391,7 +391,8 @@ const AdjustPage = () => {
           borderRadius: '16px',
           boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
           border: '1px solid #E2E8F0',
-        }}>
+        }}
+        >
           <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '12px' }}>
             <ImageIcon size={18} color="#3B82F6" style={{ marginRight: '8px' }} />
             <Text style={{ fontSize: '15px', fontWeight: '600', color: '#1E293B' }}>

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LLMClient, ImageGenerationClient, Config } from 'coze-coding-dev-sdk';
+import { LLMClient, ImageGenerationClient, Config, S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient } from '../storage/database/supabase-client';
 
 /**
@@ -100,6 +100,7 @@ export class ImageService {
   private llmClient: LLMClient;
   private imageClient: ImageGenerationClient;
   private config: Config;
+  private s3Storage: S3Storage;
   
   // 存储对话session数据（模拟数据库）
   private sessions: Map<string, SessionData> = new Map();
@@ -116,6 +117,15 @@ export class ImageService {
 
     // 初始化图片生成客户端
     this.imageClient = new ImageGenerationClient(this.config);
+    
+    // 初始化 S3 存储客户端（用于文件上传）
+    this.s3Storage = new S3Storage({
+      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+      accessKey: '',
+      secretKey: '',
+      bucketName: process.env.COZE_BUCKET_NAME,
+      region: 'cn-beijing',
+    });
   }
 
   /**
@@ -1197,5 +1207,40 @@ ${formatNeedsForPrompt(currentNeeds)}
    */
   getSession(sessionId: string): SessionData | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  /**
+   * 上传图片到 TOS 对象存储
+   * @param file 文件数据（Buffer）
+   * @param filename 文件名
+   * @returns 上传后的图片 URL
+   */
+  async uploadImage(file: Buffer, filename?: string): Promise<string> {
+    console.log('[Upload] 开始上传图片:', filename || 'unknown');
+    
+    try {
+      // 生成唯一文件名
+      const uniqueFilename = filename || `upload_${Date.now()}_${Math.random().toString(36).slice(2)}.png`;
+      
+      // 上传到 TOS（返回实际存储的 key）
+      const actualKey = await this.s3Storage.uploadFile({
+        fileContent: file,
+        fileName: uniqueFilename,
+        contentType: 'image/png'
+      });
+      
+      // 生成访问 URL（有效期 7 天）
+      const url = await this.s3Storage.generatePresignedUrl({
+        key: actualKey,
+        expireTime: 7 * 24 * 60 * 60  // 7 天
+      });
+      
+      console.log('[Upload] 上传成功, key:', actualKey);
+      console.log('[Upload] 图片 URL:', url);
+      return url;
+    } catch (error) {
+      console.error('[Upload] 上传失败:', error);
+      throw error;
+    }
   }
 }
