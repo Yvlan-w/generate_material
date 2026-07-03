@@ -1,5 +1,18 @@
-import { Controller, Post, Get, Body, Query, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ImageService } from './image.service';
+
+type MulterFile = {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination: string;
+  filename: string;
+  path: string;
+  buffer: Buffer;
+};
 
 /**
  * 图片生成Controller
@@ -19,14 +32,16 @@ export class ImageController {
    * └─ 通过 → 正负提示词 → 文生图 → 图片 + 需求 + 免责文案
    */
   @Post('chat')
-  async chat(@Body() body: { sessionId: string; message: string; stage: string; userId?: string }) {
+  async chat(@Body() body: { sessionId: string; message: string; stage: string; userId?: string; imageType?: 'reference' | 'included'; imageUrls?: string[] }) {
     console.log('[API] Chat request:', body);
     
     const result = await this.imageService.chat(
       body.sessionId,
       body.message,
       body.stage as any,
-      body.userId
+      body.userId,
+      body.imageType,
+      body.imageUrls
     );
     
     return {
@@ -34,6 +49,39 @@ export class ImageController {
       msg: 'success',
       data: result
     };
+  }
+
+  /**
+   * 图片上传接口
+   * POST /api/image/upload
+   */
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('image'))
+  async uploadImage(@UploadedFile() file: MulterFile, @Body() body: { userId?: string }) {
+    console.log('[API] Upload request, file:', file?.originalname, 'userId:', body.userId);
+    
+    if (!file) {
+      return {
+        code: 400,
+        msg: '请上传图片'
+      };
+    }
+    
+    try {
+      const result = await this.imageService.saveUploadedImage(file, body.userId);
+      
+      return {
+        code: 200,
+        msg: 'success',
+        data: result
+      };
+    } catch (error) {
+      console.error('[API] Upload error:', error);
+      return {
+        code: 500,
+        msg: '图片上传失败'
+      };
+    }
   }
 
   /**

@@ -73,9 +73,10 @@ export const generatedImages = pgTable(
 		prompt: text("prompt"),              // 用户原始需求
 		positive_prompt: text("positive_prompt"),  // 正向绘图提示词
 		negative_prompt: text("negative_prompt"),  // 逆向绘图提示词
-		image_url: varchar("image_url", { length: 500 }),  // TOS 图片 URL
+		image_url: varchar("image_url", { length: 500 }),  // 图片 URL
 		status: varchar("status", { length: 20 }).default("pending").notNull(),  // pending/compliant/rejected
 		compliance_note: text("compliance_note"),  // 合规检查备注
+		image_type: varchar("image_type", { length: 20 }).default("generated").notNull(),  // generated/uploaded
 		created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp("updated_at", { withTimezone: true }),
 	},
@@ -83,5 +84,6 @@ export const generatedImages = pgTable(
 		index("generated_images_user_id_idx").on(table.user_id),
 		index("generated_images_status_idx").on(table.status),
 		index("generated_images_created_at_idx").on(table.created_at),
+		index("generated_images_image_type_idx").on(table.image_type),
 	]
 );
