@@ -166,8 +166,8 @@ const IndexPage = () => {
             role: 'agent',
             content: data.reply,
             timestamp: new Date(),
-            type: data.type || 'text',
-            data: data.data
+            type: data.generatedImage ? 'image' : (data.type || 'text'),
+            data: data.generatedImage ? { imageUrl: data.generatedImage, needs: data.structuredNeeds, disclaimer: data.disclaimer } : data.data
           };
           setMessages(prev => [...prev, agentMessage]);
         }
@@ -195,7 +195,7 @@ const IndexPage = () => {
           setMessages(prev => [...prev, complianceMessage]);
         }
         
-        if (data.stage === 'completed' && data.generatedImage) {
+        if (data.stage === 'completed' && data.generatedImage && !data.reply) {
           const imageMessage: Message = {
             id: `msg_${Date.now()}_image`,
             role: 'agent',
@@ -492,23 +492,65 @@ const IndexPage = () => {
       );
     }
 
-    if (message.type === 'image') {
+    if (message.type === 'image' && message.data?.imageUrl) {
+      const isUserImage = message.role === 'user';
       return (
         <Card style={{
           marginTop: '12px',
-          borderRadius: '16px',
+          borderRadius: isUserImage ? '16px' : '16px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-          border: 'none'
+          border: 'none',
+          backgroundColor: isUserImage ? '#EFF6FF' : '#FFFFFF'
         }}
         >
-          <CardContent style={{ padding: '16px' }}>
+          <CardContent style={{ padding: '12px' }}>
             <Image 
-              src={message.data?.imageUrl}
+              src={message.data.imageUrl}
               className="w-full rounded-lg"
               mode="widthFix"
-              style={{ borderRadius: '12px' }}
+              style={{ 
+                borderRadius: '12px',
+                maxHeight: '400px',
+                objectFit: 'contain'
+              }}
             />
-            {message.data?.needs && (
+            {message.data.imageUrls && message.data.imageUrls.length > 1 && (
+              <View style={{ 
+                display: 'flex', 
+                flexDirection: 'row', 
+                flexWrap: 'wrap', 
+                gap: '8px',
+                marginTop: '8px'
+              }}>
+                {message.data.imageUrls.slice(1).map((url: string, index: number) => (
+                  <Image
+                    key={index}
+                    src={url}
+                    style={{
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '8px',
+                      objectFit: 'cover'
+                    }}
+                    mode="aspectFill"
+                  />
+                ))}
+              </View>
+            )}
+            {message.data.imageType && (
+              <View style={{ 
+                marginTop: '8px',
+                padding: '6px 12px',
+                backgroundColor: isUserImage ? '#DBEAFE' : '#F1F5F9',
+                borderRadius: '20px',
+                alignSelf: 'flex-start'
+              }}>
+                <Text className="block text-xs font-medium text-blue-700">
+                  {message.data.imageType === 'reference' ? '参考图片' : '素材图片'}
+                </Text>
+              </View>
+            )}
+            {!isUserImage && message.data?.needs && (
               <View style={{ marginTop: '16px' }}>
                 <Text className="block text-sm font-semibold text-gray-700">
                   需求摘要：
@@ -518,7 +560,7 @@ const IndexPage = () => {
                 </Text>
               </View>
             )}
-            {message.data?.disclaimer && (
+            {!isUserImage && message.data?.disclaimer && (
               <View style={{
                 marginTop: '12px',
                 padding: '12px',
@@ -534,6 +576,10 @@ const IndexPage = () => {
           </CardContent>
         </Card>
       );
+    }
+    
+    if (message.type === 'image' && !message.data?.imageUrl) {
+      return null;
     }
     
     if (message.type === 'violation-warning') {
