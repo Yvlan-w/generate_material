@@ -303,11 +303,10 @@ const IndexPage = () => {
               Taro.showActionSheet({
                 itemList: ['作为参考图片', '作为包含元素'],
                 success: (actionRes) => {
-                  const imageUrls = uploadedUrls;
                   if (actionRes.tapIndex === 0) {
-                    handleAddReferenceImages(imageUrls);
+                    handleAddReferenceImagesOneByOne(uploadedUrls, 0, []);
                   } else {
-                    handleAddIncludedElements(imageUrls);
+                    handleAddIncludedElementsOneByOne(uploadedUrls, 0, []);
                   }
                 },
                 fail: () => {
@@ -334,36 +333,98 @@ const IndexPage = () => {
     }
   };
 
-  const handleAddReferenceImages = (urls: string[]) => {
+  const handleAddReferenceImagesOneByOne = (urls: string[], index: number, results: Array<{ url: string; aspects: string[] }>) => {
+    if (index >= urls.length) {
+      handleAddReferenceImages(results);
+      return;
+    }
+    
+    Taro.showModal({
+      title: `参考图片 ${index + 1}/${urls.length}`,
+      editable: true as any,
+      placeholderText: '请输入想在哪些方面借鉴这张参考图片（如：风格、色调、构图）',
+      confirmText: index === urls.length - 1 ? '完成' : '下一张',
+      cancelText: '跳过',
+      success: (modalRes: any) => {
+        const aspects = modalRes.content ? modalRes.content.split(/[,，、\s]+/).filter((s: string) => s.trim()) : [];
+        results.push({ url: urls[index], aspects });
+        handleAddReferenceImagesOneByOne(urls, index + 1, results);
+      },
+      fail: () => {
+        results.push({ url: urls[index], aspects: [] });
+        handleAddReferenceImagesOneByOne(urls, index + 1, results);
+      }
+    } as any);
+  };
+
+  const handleAddIncludedElementsOneByOne = (urls: string[], index: number, results: Array<{ url: string; position: string }>) => {
+    if (index >= urls.length) {
+      handleAddIncludedElements(results);
+      return;
+    }
+    
+    Taro.showModal({
+      title: `素材图片 ${index + 1}/${urls.length}`,
+      editable: true as any,
+      placeholderText: '请输入这张素材图片希望被放置的位置（如：左上角、底部居中、背景）',
+      confirmText: index === urls.length - 1 ? '完成' : '下一张',
+      cancelText: '跳过',
+      success: (modalRes: any) => {
+        const position = modalRes.content ? modalRes.content.trim() : '';
+        results.push({ url: urls[index], position });
+        handleAddIncludedElementsOneByOne(urls, index + 1, results);
+      },
+      fail: () => {
+        results.push({ url: urls[index], position: '' });
+        handleAddIncludedElementsOneByOne(urls, index + 1, results);
+      }
+    } as any);
+  };
+
+  const handleAddReferenceImages = (images: Array<{ url: string; aspects: string[] }>) => {
+    const urls = images.map(img => img.url);
+    
+    const newReferenceImages = images.map(img => ({
+      url: img.url,
+      aspects: img.aspects
+    }));
+    
     setSessionState(prev => ({
       ...prev,
       structuredNeeds: {
         ...prev.structuredNeeds,
-        referenceImages: [...(prev.structuredNeeds?.referenceImages || []), ...urls]
+        referenceImages: [...(prev.structuredNeeds?.referenceImages || []), ...newReferenceImages]
       }
     }));
+    
+    const hasAspects = images.some(img => img.aspects && img.aspects.length > 0);
+    const aspectText = hasAspects ? images.map((img, i) => `图片${i + 1}借鉴：${img.aspects.join('、')}`).join('；') : '';
     
     const imageMessage: Message = {
       id: `msg_${Date.now()}_image_upload`,
       role: 'user',
-      content: `上传了 ${urls.length} 张参考图片`,
+      content: `上传了 ${urls.length} 张参考图片${aspectText ? `，${aspectText}` : ''}`,
       timestamp: new Date(),
       type: 'image',
       data: {
         imageUrl: urls[0],
         imageUrls: urls,
-        imageType: 'reference'
+        imageType: 'reference',
+        imageDetails: images
       }
     };
     setMessages(prev => [...prev, imageMessage]);
     
-    handleSendMessageWithImage('reference', urls);
+    handleSendMessageWithImage('reference', images);
   };
 
-  const handleAddIncludedElements = (urls: string[]) => {
-    const newElements = urls.map(url => ({
+  const handleAddIncludedElements = (elements: Array<{ url: string; position: string }>) => {
+    const urls = elements.map(elem => elem.url);
+    
+    const newElements = elements.map(elem => ({
       type: 'image' as const,
-      value: url
+      value: elem.url,
+      position: elem.position
     }));
     
     setSessionState(prev => ({
@@ -374,26 +435,31 @@ const IndexPage = () => {
       }
     }));
     
+    const hasPosition = elements.some(elem => elem.position);
+    const positionText = hasPosition ? elements.map((elem, i) => `图片${i + 1}位置：${elem.position}`).join('；') : '';
+    
     const imageMessage: Message = {
       id: `msg_${Date.now()}_image_upload`,
       role: 'user',
-      content: `上传了 ${urls.length} 张素材图片`,
+      content: `上传了 ${urls.length} 张素材图片${positionText ? `，${positionText}` : ''}`,
       timestamp: new Date(),
       type: 'image',
       data: {
         imageUrl: urls[0],
         imageUrls: urls,
-        imageType: 'included'
+        imageType: 'included',
+        imageDetails: elements
       }
     };
     setMessages(prev => [...prev, imageMessage]);
     
-    handleSendMessageWithImage('included', urls);
+    handleSendMessageWithImage('included', elements);
   };
 
-  const handleSendMessageWithImage = async (imageType: 'reference' | 'included', urls: string[]) => {
+  const handleSendMessageWithImage = async (imageType: 'reference' | 'included', images: Array<{ url: string; aspects?: string[]; position?: string }>) => {
     try {
       const userInfo = Taro.getStorageSync('userInfo') || {};
+      const urls = images.map(img => img.url);
       
       const response = await Network.request({
         url: '/api/image/chat',
@@ -404,7 +470,8 @@ const IndexPage = () => {
           stage: sessionState.stage,
           userId: userInfo.id,
           imageType,
-          imageUrls: urls
+          imageUrls: urls,
+          imageDetails: images
         }
       });
 
@@ -522,19 +589,30 @@ const IndexPage = () => {
                 gap: '8px',
                 marginTop: '8px'
               }}>
-                {message.data.imageUrls.slice(1).map((url: string, index: number) => (
-                  <Image
-                    key={index}
-                    src={url}
-                    style={{
-                      width: '60px',
-                      height: '60px',
-                      borderRadius: '8px',
-                      objectFit: 'cover'
-                    }}
-                    mode="aspectFill"
-                  />
-                ))}
+                {message.data.imageUrls.slice(1).map((url: string, index: number) => {
+                  const detail = message.data.imageDetails?.[index + 1];
+                  return (
+                    <View key={index} style={{ width: '60px' }}>
+                      <Image
+                        src={url}
+                        style={{
+                          width: '60px',
+                          height: '60px',
+                          borderRadius: '8px',
+                          objectFit: 'cover'
+                        }}
+                        mode="aspectFill"
+                      />
+                      {detail && ((detail.aspects && detail.aspects.length > 0) || detail.position) && (
+                        <View style={{ marginTop: '4px', padding: '2px 4px', backgroundColor: '#F0FDF4', borderRadius: '4px' }}>
+                          <Text className="block text-[10px] text-green-700">
+                            {detail.aspects?.length ? detail.aspects.join('、') : detail.position}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
             )}
             {message.data.imageType && (
@@ -547,6 +625,32 @@ const IndexPage = () => {
               }}>
                 <Text className="block text-xs font-medium text-blue-700">
                   {message.data.imageType === 'reference' ? '参考图片' : '素材图片'}
+                </Text>
+              </View>
+            )}
+            {message.data.imageType === 'reference' && message.data.aspects && message.data.aspects.length > 0 && (
+              <View style={{ 
+                marginTop: '8px',
+                padding: '8px 12px',
+                backgroundColor: '#F0FDF4',
+                borderRadius: '8px',
+                alignSelf: 'flex-start'
+              }}>
+                <Text className="block text-xs font-medium text-green-700">
+                  借鉴方面：{message.data.aspects.join('、')}
+                </Text>
+              </View>
+            )}
+            {message.data.imageType === 'included' && message.data.position && (
+              <View style={{ 
+                marginTop: '8px',
+                padding: '8px 12px',
+                backgroundColor: '#FEFCE8',
+                borderRadius: '8px',
+                alignSelf: 'flex-start'
+              }}>
+                <Text className="block text-xs font-medium text-amber-700">
+                  使用位置：{message.data.position}
                 </Text>
               </View>
             )}

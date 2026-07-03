@@ -18,6 +18,17 @@ export interface SessionData {
   collectedFields: Set<string>;
 }
 
+export interface ReferenceImage {
+  url: string;
+  aspects?: string[];
+}
+
+export interface IncludedElement {
+  type: 'image' | 'text';
+  value: string;
+  position?: string;
+}
+
 export interface StructuredNeeds {
   theme?: string;
   content?: string;
@@ -29,6 +40,8 @@ export interface StructuredNeeds {
   targetAudience?: string;
   usage?: string;
   summary?: string;
+  referenceImages?: ReferenceImage[];
+  includedElements?: IncludedElement[];
 }
 
 // 字段中文标签映射，集中维护，避免多处硬编码
@@ -42,19 +55,22 @@ const NEED_FIELD_LABELS: Record<keyof StructuredNeeds, string> = {
   size: '图片尺寸',
   targetAudience: '目标受众',
   usage: '使用场景',
-  summary: '需求摘要'
+  summary: '需求摘要',
+  referenceImages: '参考图片',
+  includedElements: '包含元素'
 };
 
 // 必填字段
-const REQUIRED_NEED_FIELDS: Array<keyof StructuredNeeds> = ['theme', 'content', 'colorTone', 'style'];
+const REQUIRED_NEED_FIELDS: Array<keyof StructuredNeeds> = ['theme', 'content', 'colorTone', 'style', 'includedElements'];
 
-// 可选但建议收集的字段
+// 可选字段
 const OPTIONAL_NEED_FIELDS: Array<keyof StructuredNeeds> = [
   'scene',
   'emotion',
   'size',
   'targetAudience',
   'usage',
+  'referenceImages',
 ];
 
 /**
@@ -62,11 +78,35 @@ const OPTIONAL_NEED_FIELDS: Array<keyof StructuredNeeds> = [
  * 统一用于 prompt 生成、合规校验、摘要生成等环节，避免字段遗漏
  */
 function formatNeedsForPrompt(needs: StructuredNeeds, exclude: Array<keyof StructuredNeeds> = []): string {
-  return (Object.keys(NEED_FIELD_LABELS) as Array<keyof StructuredNeeds>)
+  const lines: string[] = [];
+  
+  (Object.keys(NEED_FIELD_LABELS) as Array<keyof StructuredNeeds>)
     .filter((key) => key !== 'summary' && !exclude.includes(key))
-    .filter((key) => needs[key])
-    .map((key) => `- ${NEED_FIELD_LABELS[key]}：${needs[key]}`)
-    .join('\n');
+    .forEach((key) => {
+      const value = needs[key];
+      if (!value) return;
+      
+      if (key === 'referenceImages') {
+        const images = value as ReferenceImage[];
+        lines.push(`- ${NEED_FIELD_LABELS[key]}：${images.length} 张参考图`);
+        images.forEach((img, index) => {
+          const aspectsText = img.aspects && img.aspects.length > 0 ? `，借鉴方面：${img.aspects.join('、')}` : '';
+          lines.push(`  - 参考图 ${index + 1}：${img.url}${aspectsText}`);
+        });
+      } else if (key === 'includedElements') {
+        const elements = value as IncludedElement[];
+        lines.push(`- ${NEED_FIELD_LABELS[key]}：`);
+        elements.forEach((elem, index) => {
+          const typeLabel = elem.type === 'image' ? '图片' : '文字';
+          const positionText = elem.position ? `，位置：${elem.position}` : '';
+          lines.push(`  ${index + 1}. [${typeLabel}] ${elem.value}${positionText}`);
+        });
+      } else {
+        lines.push(`- ${NEED_FIELD_LABELS[key]}：${value}`);
+      }
+    });
+  
+  return lines.join('\n');
 }
 
 export interface ComplianceResult {
@@ -132,13 +172,16 @@ export class ImageService {
    * 多轮对话接口 - 需求收集Agent
    * 根据当前状态决定下一步行动
    */
-  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string): Promise<ChatResponse> {
+  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>): Promise<ChatResponse> {
     console.log(`\n===========================================`);
     console.log(`[Chat] NEW REQUEST`);
     console.log(`[Chat] Session: ${sessionId}`);
     console.log(`[Chat] Current Stage: ${currentStage}`);
     console.log(`[Chat] User Message: "${message}"`);
     console.log(`[Chat] User ID: ${userId}`);
+    console.log(`[Chat] Image Type: ${imageType}`);
+    console.log(`[Chat] Image URLs: ${JSON.stringify(imageUrls)}`);
+    console.log(`[Chat] Image Details: ${JSON.stringify(imageDetails)}`);
     console.log(`===========================================`);
     
     // 获取或创建session数据
@@ -157,6 +200,45 @@ export class ImageService {
       console.log(`[Chat] Found existing session`);
       console.log(`[Chat] Session collectedFields: ${Array.from(session.collectedFields)}`);
       console.log(`[Chat] Session structuredNeeds:`, JSON.stringify(session.structuredNeeds));
+    }
+    
+    // 处理图片上传
+    if (imageType && imageUrls && imageUrls.length > 0) {
+      console.log(`[Chat] Processing ${imageType} images: ${imageUrls.length}`);
+      if (!session.structuredNeeds) {
+        session.structuredNeeds = {};
+      }
+      
+      if (imageType === 'reference') {
+        const newReferenceImages = imageDetails ? imageDetails.map(img => ({
+          url: img.url,
+          aspects: img.aspects || []
+        })) : imageUrls.map(url => ({ url, aspects: [] }));
+        
+        session.structuredNeeds.referenceImages = [
+          ...(session.structuredNeeds.referenceImages || []),
+          ...newReferenceImages
+        ];
+        session.collectedFields.add('referenceImages');
+      } else if (imageType === 'included') {
+        const newElements = imageDetails ? imageDetails.map(img => ({
+          type: 'image' as const,
+          value: img.url,
+          position: img.position || ''
+        })) : imageUrls.map(url => ({
+          type: 'image' as const,
+          value: url,
+          position: ''
+        }));
+        
+        session.structuredNeeds.includedElements = [
+          ...(session.structuredNeeds.includedElements || []),
+          ...newElements
+        ];
+        session.collectedFields.add('includedElements');
+      }
+      
+      console.log(`[Chat] Updated structuredNeeds after image upload:`, JSON.stringify(session.structuredNeeds));
     }
     
     // 更新 userId（如果之前没有设置）
@@ -442,12 +524,18 @@ export class ImageService {
 必须收集的关键字段：${requiredDesc}
 可选但建议补充的字段：${optionalDesc}
 
+字段说明：
+- referenceImages（参考图片）：用户可以上传参考图片，需要记录在哪些方面借鉴（如风格、色调、构图等）
+- includedElements（包含元素）：图片中必须包含的元素，可以是文字描述（如"公司logo"）或用户上传的素材图片，需要记录每个元素的使用位置（如左上角、底部居中、背景等）
+
 你的任务：
 1. 理解用户最新的输入，分析是否包含新的需求信息
 2. 如果必填字段尚未齐全，只引导用户补充下一个缺失的必填字段
 3. 如果必填字段已齐全但可选字段仍有缺失，主动提示用户是否补充（例如"为了让素材更贴合使用场景，是否可以告诉我...？"）
-4. 不要一次问多个问题，一次只引导一个字段
-5. 避免重复已收集的信息
+4. 对于 includedElements（包含元素），引导用户说明图片中必须包含哪些元素，以及每个元素的使用位置
+5. 对于 referenceImages（参考图片），询问用户是否有参考图片可以上传，以及想在哪些方面借鉴
+6. 不要一次问多个问题，一次只引导一个字段
+7. 避免重复已收集的信息
 
 回复要求：
 - 简洁友好，不超过3句话
@@ -483,9 +571,11 @@ ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
 - size: 图片尺寸或比例（如 1:1、16:9、竖版海报 1080x1920 等）
 - targetAudience: 目标受众（如高净值客户、年轻投资者、内部员工等）
 - usage: 使用场景（如朋友圈、公众号头图、海报、线下展架、短视频封面等）
+- referenceImages: 参考图片（数组，每个元素为{"url":"图片URL","aspects":["借鉴方面1","借鉴方面2"]}）
+- includedElements: 包含元素（数组，每个元素为{"type":"image"|"text","value":"图片URL或文字描述","position":"使用位置"}）
 
 输出严格 JSON 格式，例如：
-{"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重","targetAudience":"高净值客户","usage":"朋友圈","size":"1:1"}`;
+{"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重","targetAudience":"高净值客户","usage":"朋友圈","size":"1:1","referenceImages":[{"url":"https://example.com/ref1.jpg","aspects":["色调","构图"]}],"includedElements":[{"type":"text","value":"公司logo","position":"左上角"},{"type":"image","value":"https://example.com/element1.jpg","position":"底部居中"}]}`;
 
     console.log(`[Extract] Calling LLM for extraction...`);
     const response = await this.llmClient.invoke(

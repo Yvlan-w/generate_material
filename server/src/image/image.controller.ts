@@ -20,14 +20,25 @@ export class ImageController {
    * └─ 通过 → 正负提示词 → 文生图 → 图片 + 需求 + 免责文案
    */
   @Post('chat')
-  async chat(@Body() body: { sessionId: string; message: string; stage: string; userId?: string }) {
+  async chat(@Body() body: { 
+    sessionId: string; 
+    message: string; 
+    stage: string; 
+    userId?: string;
+    imageType?: 'reference' | 'included';
+    imageUrls?: string[];
+    imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>;
+  }) {
     console.log('[API] Chat request:', body);
     
     const result = await this.imageService.chat(
       body.sessionId,
       body.message,
       body.stage as any,
-      body.userId
+      body.userId,
+      body.imageType,
+      body.imageUrls,
+      body.imageDetails
     );
     
     return {
