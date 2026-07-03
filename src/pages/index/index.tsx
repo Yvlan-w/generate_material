@@ -105,6 +105,7 @@ const IndexPage = () => {
       timestamp: new Date(),
       type: imagesToSend.length > 0 ? 'image' : 'text',
       data: imagesToSend.length > 0 ? {
+        imageUrl: imagesToSend[0]?.url,
         imageUrls: imagesToSend.map(img => img.url),
         imageDetails: imagesToSend
       } : undefined
@@ -488,6 +489,79 @@ const IndexPage = () => {
       );
     }
 
+    if (message.type === 'image' && message.data?.imageUrls && message.role === 'user') {
+      return (
+        <Card style={{
+          marginTop: '12px',
+          borderRadius: '16px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          border: 'none',
+          backgroundColor: '#EFF6FF'
+        }}
+        >
+          <CardContent style={{ padding: '12px' }}>
+            {message.content && (
+              <Text className="block text-sm whitespace-pre-wrap mb-3" style={{ lineHeight: '1.6' }}>
+                {message.content}
+              </Text>
+            )}
+            <View style={{ 
+              display: 'flex', 
+              flexDirection: 'row', 
+              flexWrap: 'wrap', 
+              gap: '8px',
+              marginTop: '8px'
+            }}>
+              {message.data.imageUrls.map((url: string, index: number) => {
+                const detail = message.data.imageDetails?.[index];
+                const imageType = detail?.imageType || (detail?.aspects ? 'reference' : 'included');
+                return (
+                  <View key={index} style={{ 
+                    width: index === 0 ? '100%' : '60px',
+                    position: 'relative'
+                  }}>
+                    <Image
+                      src={url}
+                      style={{
+                        width: index === 0 ? '100%' : '60px',
+                        height: index === 0 ? 'auto' : '60px',
+                        borderRadius: index === 0 ? '12px' : '8px',
+                        objectFit: index === 0 ? 'contain' : 'cover',
+                        maxHeight: index === 0 ? '200px' : '60px'
+                      }}
+                      mode={index === 0 ? 'widthFix' : 'aspectFill'}
+                    />
+                    <View style={{
+                      position: 'absolute',
+                      top: '4px',
+                      left: '4px',
+                      backgroundColor: 'rgba(0,0,0,0.6)',
+                      borderRadius: '4px',
+                      paddingLeft: '4px',
+                      paddingRight: '4px',
+                      paddingTop: '1px',
+                      paddingBottom: '1px'
+                    }}>
+                      <Text className="block text-xs text-white">
+                        {imageType === 'reference' ? '参考' : '素材'}
+                      </Text>
+                    </View>
+                    {detail && ((detail.aspects && detail.aspects.length > 0) || detail.position) && (
+                      <View style={{ marginTop: index === 0 ? '4px' : '2px', padding: '2px 4px', backgroundColor: imageType === 'reference' ? '#F0FDF4' : '#FEFCE8', borderRadius: '4px' }}>
+                        <Text className="block text-[10px] text-green-700">
+                          {detail.aspects?.length ? detail.aspects.join('、') : detail.position}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </CardContent>
+        </Card>
+      );
+    }
+    
     if (message.type === 'image' && message.data?.imageUrl) {
       const isUserImage = message.role === 'user';
       return (
@@ -500,6 +574,11 @@ const IndexPage = () => {
         }}
         >
           <CardContent style={{ padding: '12px' }}>
+            {isUserImage && message.content && (
+              <Text className="block text-sm whitespace-pre-wrap mb-3" style={{ lineHeight: '1.6' }}>
+                {message.content}
+              </Text>
+            )}
             <Image 
               src={message.data.imageUrl}
               className="w-full rounded-lg"
