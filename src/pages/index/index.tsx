@@ -241,7 +241,8 @@ const IndexPage = () => {
   const handleImageUpload = async () => {
     try {
       const userInfo = Taro.getStorageSync('userInfo') || {};
-      
+      const isWeapp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP;
+
       Taro.chooseImage({
         count: 9,
         sizeType: ['compressed'],
@@ -251,39 +252,74 @@ const IndexPage = () => {
           if (tempFilePaths.length === 0) return;
 
           setIsProcessing(true);
-          
-          const uploadPromises = tempFilePaths.map((filePath) => {
-            return Network.uploadFile({
-              url: '/api/image/upload',
-              filePath,
-              name: 'image',
-              formData: {
-                userId: userInfo.id || ''
+
+          try {
+            let uploadedUrls: string[] = [];
+
+            if (isWeapp) {
+              // 小程序端：使用 Network.uploadFile
+              const uploadPromises = tempFilePaths.map((filePath) => {
+                return Network.uploadFile({
+                  url: '/api/image/upload',
+                  filePath,
+                  name: 'image',
+                  formData: {
+                    userId: userInfo.id || ''
+                  }
+                });
+              });
+
+              const results = await Promise.all(uploadPromises);
+              uploadedUrls = results
+                .filter(r => r.data && JSON.parse(r.data).code === 200)
+                .map(r => JSON.parse(r.data).data.url);
+            } else {
+              // H5端：使用原生 fetch + FormData，绕过 Taro uploadFile（Coze SW 拦截问题）
+              const tempFiles = (res as any).tempFiles as File[] || [];
+              if (tempFiles.length === 0) {
+                throw new Error('未获取到文件对象');
               }
-            });
-          });
 
-          const results = await Promise.all(uploadPromises);
-          const uploadedUrls = results
-            .filter(r => r.data && JSON.parse(r.data).code === 200)
-            .map(r => JSON.parse(r.data).data.url);
+              const uploadUrl = `${PROJECT_DOMAIN}/api/image/upload`;
+              const uploadPromises = tempFiles.map((file) => {
+                const formData = new FormData();
+                formData.append('image', file);
+                formData.append('userId', userInfo.id || '');
 
-          if (uploadedUrls.length > 0) {
-            Taro.showActionSheet({
-              itemList: ['作为参考图片', '作为包含元素'],
-              success: (actionRes) => {
-                const imageUrls = uploadedUrls;
-                if (actionRes.tapIndex === 0) {
-                  handleAddReferenceImages(imageUrls);
-                } else {
-                  handleAddIncludedElements(imageUrls);
+                return fetch(uploadUrl, {
+                  method: 'POST',
+                  body: formData,
+                  credentials: 'include'
+                }).then(resp => resp.json());
+              });
+
+              const results = await Promise.all(uploadPromises);
+              uploadedUrls = results
+                .filter(r => r && r.code === 200)
+                .map(r => r.data.url);
+            }
+
+            if (uploadedUrls.length > 0) {
+              Taro.showActionSheet({
+                itemList: ['作为参考图片', '作为包含元素'],
+                success: (actionRes) => {
+                  const imageUrls = uploadedUrls;
+                  if (actionRes.tapIndex === 0) {
+                    handleAddReferenceImages(imageUrls);
+                  } else {
+                    handleAddIncludedElements(imageUrls);
+                  }
+                },
+                fail: () => {
+                  setIsProcessing(false);
                 }
-              },
-              fail: () => {
-                setIsProcessing(false);
-              }
-            });
-          } else {
+              });
+            } else {
+              Taro.showToast({ title: '图片上传失败', icon: 'error' });
+              setIsProcessing(false);
+            }
+          } catch (uploadError) {
+            console.error('上传失败:', uploadError);
             Taro.showToast({ title: '图片上传失败', icon: 'error' });
             setIsProcessing(false);
           }
