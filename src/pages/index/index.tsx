@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon } from 'lucide-react-taro';
+import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles } from 'lucide-react-taro';
 import CustomTabBar from '@/components/CustomTabBar';
 import './index.css';
 
@@ -237,166 +237,7 @@ const IndexPage = () => {
     }
   };
 
-  // 图片上传处理
-  const handleImageUpload = async () => {
-    try {
-      const userInfo = Taro.getStorageSync('userInfo') || {};
-      
-      Taro.chooseImage({
-        count: 9,
-        sizeType: ['compressed'],
-        sourceType: ['album', 'camera'],
-        success: async (res) => {
-          const tempFilePaths = res.tempFilePaths;
-          if (tempFilePaths.length === 0) return;
-
-          setIsProcessing(true);
-          
-          const uploadPromises = tempFilePaths.map((filePath) => {
-            return Network.uploadFile({
-              url: '/api/image/upload',
-              filePath,
-              name: 'image',
-              formData: {
-                userId: userInfo.id || ''
-              }
-            });
-          });
-
-          const results = await Promise.all(uploadPromises);
-          const uploadedUrls = results
-            .filter(r => r.data && JSON.parse(r.data).code === 200)
-            .map(r => JSON.parse(r.data).data.url);
-
-          if (uploadedUrls.length > 0) {
-            Taro.showActionSheet({
-              itemList: ['作为参考图片', '作为包含元素'],
-              success: (actionRes) => {
-                const imageUrls = uploadedUrls;
-                if (actionRes.tapIndex === 0) {
-                  handleAddReferenceImages(imageUrls);
-                } else {
-                  handleAddIncludedElements(imageUrls);
-                }
-              },
-              fail: () => {
-                setIsProcessing(false);
-              }
-            });
-          } else {
-            Taro.showToast({ title: '图片上传失败', icon: 'error' });
-            setIsProcessing(false);
-          }
-        },
-        fail: () => {
-          setIsProcessing(false);
-        }
-      });
-    } catch (error) {
-      console.error('图片上传失败:', error);
-      setIsProcessing(false);
-    }
-  };
-
-  const handleAddReferenceImages = (urls: string[]) => {
-    setSessionState(prev => ({
-      ...prev,
-      structuredNeeds: {
-        ...prev.structuredNeeds,
-        referenceImages: [...(prev.structuredNeeds?.referenceImages || []), ...urls]
-      }
-    }));
-    
-    const imageMessage: Message = {
-      id: `msg_${Date.now()}_image_upload`,
-      role: 'user',
-      content: `上传了 ${urls.length} 张参考图片`,
-      timestamp: new Date(),
-      type: 'image',
-      data: {
-        imageUrl: urls[0],
-        imageUrls: urls,
-        imageType: 'reference'
-      }
-    };
-    setMessages(prev => [...prev, imageMessage]);
-    
-    handleSendMessageWithImage('reference', urls);
-  };
-
-  const handleAddIncludedElements = (urls: string[]) => {
-    const newElements = urls.map(url => ({
-      type: 'image' as const,
-      value: url
-    }));
-    
-    setSessionState(prev => ({
-      ...prev,
-      structuredNeeds: {
-        ...prev.structuredNeeds,
-        includedElements: [...(prev.structuredNeeds?.includedElements || []), ...newElements]
-      }
-    }));
-    
-    const imageMessage: Message = {
-      id: `msg_${Date.now()}_image_upload`,
-      role: 'user',
-      content: `上传了 ${urls.length} 张素材图片`,
-      timestamp: new Date(),
-      type: 'image',
-      data: {
-        imageUrl: urls[0],
-        imageUrls: urls,
-        imageType: 'included'
-      }
-    };
-    setMessages(prev => [...prev, imageMessage]);
-    
-    handleSendMessageWithImage('included', urls);
-  };
-
-  const handleSendMessageWithImage = async (imageType: 'reference' | 'included', urls: string[]) => {
-    try {
-      const userInfo = Taro.getStorageSync('userInfo') || {};
-      
-      const response = await Network.request({
-        url: '/api/image/chat',
-        method: 'POST',
-        data: {
-          sessionId: sessionState.sessionId,
-          message: `上传了${imageType === 'reference' ? '参考' : '素材'}图片`,
-          stage: sessionState.stage,
-          userId: userInfo.id,
-          imageType,
-          imageUrls: urls
-        }
-      });
-
-      const { code, data } = response.data;
-      if (code === 200) {
-        setSessionState(prev => ({
-          ...prev,
-          stage: data.stage,
-          structuredNeeds: data.structuredNeeds
-        }));
-        
-        if (data.reply) {
-          const agentMessage: Message = {
-            id: `msg_${Date.now()}_agent`,
-            role: 'agent',
-            content: data.reply,
-            timestamp: new Date(),
-            type: data.type || 'text'
-          };
-          setMessages(prev => [...prev, agentMessage]);
-        }
-      }
-    } catch (error) {
-      console.error('图片上传后发送消息失败:', error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // 重置对话
   const handleReset = () => {
     setMessages([
       {
@@ -737,26 +578,7 @@ const IndexPage = () => {
               placeholderStyle="color: #94A3B8"
             />
           </View>
-          <View style={{ flexShrink: 0, display: 'flex', flexDirection: 'row', gap: '8px' }}>
-            <Button
-              size="default"
-              variant="outline"
-              onClick={handleImageUpload}
-              disabled={isProcessing}
-              style={{
-                borderRadius: '24px',
-                paddingLeft: '16px',
-                paddingRight: '16px',
-                height: '44px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#F8FAFC',
-                borderColor: '#E2E8F0'
-              }}
-            >
-              <ImageIcon size={18} color="#64748B" />
-            </Button>
+          <View style={{ flexShrink: 0 }}>
             <Button
               size="default"
               onClick={handleSendMessage}
