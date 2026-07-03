@@ -82,17 +82,32 @@ const IndexPage = () => {
     sessionId: `session_${Date.now()}`,
     stage: 'collecting'
   });
+  
+  interface PendingImage {
+    id: string;
+    url: string;
+    localUrl?: string;
+    imageType?: 'reference' | 'included';
+    aspects?: string[];
+    position?: string;
+  }
+  
+  const [imagesToSend, setImagesToSend] = useState<PendingImage[]>([]);
 
   // 发送消息
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isProcessing) return;
+    if (!inputValue.trim() && imagesToSend.length === 0 || isProcessing) return;
     
     const userMessage: Message = {
       id: `msg_${Date.now()}`,
       role: 'user',
-      content: inputValue.trim(),
+      content: inputValue.trim() || (imagesToSend.length > 0 ? `上传了 ${imagesToSend.length} 张图片` : ''),
       timestamp: new Date(),
-      type: 'text'
+      type: imagesToSend.length > 0 ? 'image' : 'text',
+      data: imagesToSend.length > 0 ? {
+        imageUrls: imagesToSend.map(img => img.url),
+        imageDetails: imagesToSend
+      } : undefined
     };
     
     setMessages(prev => [...prev, userMessage]);
@@ -115,26 +130,55 @@ const IndexPage = () => {
     try {
       const userInfo = Taro.getStorageSync('userInfo') || {};
       
+      const requestData: Record<string, any> = {
+        sessionId: sessionState.sessionId,
+        message: userMessage.content,
+        stage: sessionState.stage,
+        userId: userInfo.id
+      };
+      
+      if (imagesToSend.length > 0) {
+        const referenceImages = imagesToSend.filter(img => img.imageType === 'reference');
+        const includedElements = imagesToSend.filter(img => img.imageType === 'included');
+        
+        if (referenceImages.length > 0) {
+          requestData.imageType = 'reference';
+          requestData.imageUrls = referenceImages.map(img => img.url);
+          requestData.imageDetails = referenceImages.map(img => ({
+            url: img.url,
+            aspects: img.aspects
+          }));
+        }
+        
+        if (includedElements.length > 0) {
+          requestData.imageType = 'included';
+          requestData.imageUrls = includedElements.map(img => img.url);
+          requestData.imageDetails = includedElements.map(img => ({
+            url: img.url,
+            position: img.position
+          }));
+        }
+        
+        if (referenceImages.length > 0 && includedElements.length > 0) {
+          requestData.imageUrls = imagesToSend.map(img => img.url);
+          requestData.imageDetails = imagesToSend.map(img => ({
+            url: img.url,
+            aspects: img.aspects,
+            position: img.position
+          }));
+        }
+      }
+      
       console.log('调用对话API:', {
         url: '/api/image/chat',
         method: 'POST',
-        data: {
-          sessionId: sessionState.sessionId,
-          message: userMessage.content,
-          stage: sessionState.stage,
-          userId: userInfo.id
-        }
+        data: requestData
       });
       
       const response = await Network.request({
         url: '/api/image/chat',
         method: 'POST',
-        data: {
-          sessionId: sessionState.sessionId,
-          message: userMessage.content,
-          stage: sessionState.stage,
-          userId: userInfo.id
-        }
+        data: requestData
       });
       
       console.log('对话API响应:', response.data);
@@ -156,6 +200,7 @@ const IndexPage = () => {
           complianceResult: data.complianceResult,
           generatedImage: data.generatedImage
         }));
+        setImagesToSend([]);
 
         // 移除之前添加的 thinking 占位消息（用真实的 reply / image 替换它的位置）
         setMessages(prev => prev.filter((m) => m.type !== 'thinking'));
@@ -303,11 +348,8 @@ const IndexPage = () => {
               Taro.showActionSheet({
                 itemList: ['作为参考图片', '作为包含元素'],
                 success: (actionRes) => {
-                  if (actionRes.tapIndex === 0) {
-                    handleAddReferenceImagesOneByOne(uploadedUrls, 0, []);
-                  } else {
-                    handleAddIncludedElementsOneByOne(uploadedUrls, 0, []);
-                  }
+                  const imageType = actionRes.tapIndex === 0 ? 'reference' : 'included';
+                  handleAddPendingImages(uploadedUrls, tempFilePaths, imageType, 0, []);
                 },
                 fail: () => {
                   setIsProcessing(false);
@@ -333,173 +375,60 @@ const IndexPage = () => {
     }
   };
 
-  const handleAddReferenceImagesOneByOne = (urls: string[], index: number, results: Array<{ url: string; aspects: string[] }>) => {
+  const handleAddPendingImages = (urls: string[], localUrls: string[], imageType: 'reference' | 'included', index: number, results: PendingImage[]) => {
     if (index >= urls.length) {
-      handleAddReferenceImages(results);
-      return;
-    }
-    
-    Taro.showModal({
-      title: `参考图片 ${index + 1}/${urls.length}`,
-      editable: true as any,
-      placeholderText: '请输入想在哪些方面借鉴这张参考图片（如：风格、色调、构图）',
-      confirmText: index === urls.length - 1 ? '完成' : '下一张',
-      cancelText: '跳过',
-      success: (modalRes: any) => {
-        const aspects = modalRes.content ? modalRes.content.split(/[,，、\s]+/).filter((s: string) => s.trim()) : [];
-        results.push({ url: urls[index], aspects });
-        handleAddReferenceImagesOneByOne(urls, index + 1, results);
-      },
-      fail: () => {
-        results.push({ url: urls[index], aspects: [] });
-        handleAddReferenceImagesOneByOne(urls, index + 1, results);
-      }
-    } as any);
-  };
-
-  const handleAddIncludedElementsOneByOne = (urls: string[], index: number, results: Array<{ url: string; position: string }>) => {
-    if (index >= urls.length) {
-      handleAddIncludedElements(results);
-      return;
-    }
-    
-    Taro.showModal({
-      title: `素材图片 ${index + 1}/${urls.length}`,
-      editable: true as any,
-      placeholderText: '请输入这张素材图片希望被放置的位置（如：左上角、底部居中、背景）',
-      confirmText: index === urls.length - 1 ? '完成' : '下一张',
-      cancelText: '跳过',
-      success: (modalRes: any) => {
-        const position = modalRes.content ? modalRes.content.trim() : '';
-        results.push({ url: urls[index], position });
-        handleAddIncludedElementsOneByOne(urls, index + 1, results);
-      },
-      fail: () => {
-        results.push({ url: urls[index], position: '' });
-        handleAddIncludedElementsOneByOne(urls, index + 1, results);
-      }
-    } as any);
-  };
-
-  const handleAddReferenceImages = (images: Array<{ url: string; aspects: string[] }>) => {
-    const urls = images.map(img => img.url);
-    
-    const newReferenceImages = images.map(img => ({
-      url: img.url,
-      aspects: img.aspects
-    }));
-    
-    setSessionState(prev => ({
-      ...prev,
-      structuredNeeds: {
-        ...prev.structuredNeeds,
-        referenceImages: [...(prev.structuredNeeds?.referenceImages || []), ...newReferenceImages]
-      }
-    }));
-    
-    const hasAspects = images.some(img => img.aspects && img.aspects.length > 0);
-    const aspectText = hasAspects ? images.map((img, i) => `图片${i + 1}借鉴：${img.aspects.join('、')}`).join('；') : '';
-    
-    const imageMessage: Message = {
-      id: `msg_${Date.now()}_image_upload`,
-      role: 'user',
-      content: `上传了 ${urls.length} 张参考图片${aspectText ? `，${aspectText}` : ''}`,
-      timestamp: new Date(),
-      type: 'image',
-      data: {
-        imageUrl: urls[0],
-        imageUrls: urls,
-        imageType: 'reference',
-        imageDetails: images
-      }
-    };
-    setMessages(prev => [...prev, imageMessage]);
-    
-    handleSendMessageWithImage('reference', images);
-  };
-
-  const handleAddIncludedElements = (elements: Array<{ url: string; position: string }>) => {
-    const urls = elements.map(elem => elem.url);
-    
-    const newElements = elements.map(elem => ({
-      type: 'image' as const,
-      value: elem.url,
-      position: elem.position
-    }));
-    
-    setSessionState(prev => ({
-      ...prev,
-      structuredNeeds: {
-        ...prev.structuredNeeds,
-        includedElements: [...(prev.structuredNeeds?.includedElements || []), ...newElements]
-      }
-    }));
-    
-    const hasPosition = elements.some(elem => elem.position);
-    const positionText = hasPosition ? elements.map((elem, i) => `图片${i + 1}位置：${elem.position}`).join('；') : '';
-    
-    const imageMessage: Message = {
-      id: `msg_${Date.now()}_image_upload`,
-      role: 'user',
-      content: `上传了 ${urls.length} 张素材图片${positionText ? `，${positionText}` : ''}`,
-      timestamp: new Date(),
-      type: 'image',
-      data: {
-        imageUrl: urls[0],
-        imageUrls: urls,
-        imageType: 'included',
-        imageDetails: elements
-      }
-    };
-    setMessages(prev => [...prev, imageMessage]);
-    
-    handleSendMessageWithImage('included', elements);
-  };
-
-  const handleSendMessageWithImage = async (imageType: 'reference' | 'included', images: Array<{ url: string; aspects?: string[]; position?: string }>) => {
-    try {
-      const userInfo = Taro.getStorageSync('userInfo') || {};
-      const urls = images.map(img => img.url);
-      
-      const response = await Network.request({
-        url: '/api/image/chat',
-        method: 'POST',
-        data: {
-          sessionId: sessionState.sessionId,
-          message: `上传了${imageType === 'reference' ? '参考' : '素材'}图片`,
-          stage: sessionState.stage,
-          userId: userInfo.id,
-          imageType,
-          imageUrls: urls,
-          imageDetails: images
-        }
-      });
-
-      const { code, data } = response.data;
-      if (code === 200) {
-        setSessionState(prev => ({
-          ...prev,
-          stage: data.stage,
-          structuredNeeds: data.structuredNeeds
-        }));
-        
-        if (data.reply) {
-          const agentMessage: Message = {
-            id: `msg_${Date.now()}_agent`,
-            role: 'agent',
-            content: data.reply,
-            timestamp: new Date(),
-            type: data.type || 'text'
-          };
-          setMessages(prev => [...prev, agentMessage]);
-        }
-      }
-    } catch (error) {
-      console.error('图片上传后发送消息失败:', error);
-    } finally {
+      setImagesToSend(prev => [...prev, ...results]);
       setIsProcessing(false);
+      return;
     }
+    
+    const currentUrl = urls[index];
+    const currentLocalUrl = localUrls[index];
+    
+    Taro.showModal({
+      title: imageType === 'reference' 
+        ? `参考图片 ${index + 1}/${urls.length}` 
+        : `素材图片 ${index + 1}/${urls.length}`,
+      editable: true as any,
+      placeholderText: imageType === 'reference' 
+        ? '请输入想在哪些方面借鉴这张参考图片（如：风格、色调、构图）' 
+        : '请输入这张素材图片希望被放置的位置（如：左上角、底部居中、背景）',
+      confirmText: index === urls.length - 1 ? '完成' : '下一张',
+      cancelText: '跳过',
+      success: (modalRes: any) => {
+        const value = modalRes.content ? modalRes.content.trim() : '';
+        const newImage: PendingImage = {
+          id: `img_${Date.now()}_${index}`,
+          url: currentUrl,
+          localUrl: currentLocalUrl,
+          imageType,
+          aspects: imageType === 'reference' ? (value ? value.split(/[,，、\s]+/).filter((s: string) => s.trim()) : []) : undefined,
+          position: imageType === 'included' ? value : undefined
+        };
+        results.push(newImage);
+        handleAddPendingImages(urls, localUrls, imageType, index + 1, results);
+      },
+      fail: () => {
+        const newImage: PendingImage = {
+          id: `img_${Date.now()}_${index}`,
+          url: currentUrl,
+          localUrl: currentLocalUrl,
+          imageType
+        };
+        results.push(newImage);
+        handleAddPendingImages(urls, localUrls, imageType, index + 1, results);
+      }
+    } as any);
   };
+
+  const removePendingImage = (id: string) => {
+    setImagesToSend(prev => prev.filter(img => img.id !== id));
+  };
+
+  const clearAllPendingImages = () => {
+    setImagesToSend([]);
+  };
+
   const handleReset = () => {
     setMessages([
       {
@@ -873,6 +802,111 @@ const IndexPage = () => {
           </View>
         )}
       </ScrollArea>
+
+      {/* 待发送图片缩略图列表 */}
+      {imagesToSend.length > 0 && (
+        <View 
+          style={{
+            position: 'fixed',
+            bottom: 120,
+            left: 0,
+            right: 0,
+            zIndex: 400,
+            backgroundColor: '#FFFFFF',
+            paddingLeft: '16px',
+            paddingRight: '16px',
+            paddingTop: '8px',
+            paddingBottom: '8px',
+            borderTop: '1px solid #E2E8F0',
+            boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
+          }}
+        >
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '8px' }}>
+            <Text className="block text-xs text-gray-500" style={{ flex: 1 }}>
+              待发送图片 ({imagesToSend.length})
+            </Text>
+            <Text className="block text-xs text-blue-500" onClick={clearAllPendingImages} style={{ marginLeft: '8px' }}>
+              清除全部
+            </Text>
+          </View>
+          <ScrollArea orientation="horizontal" style={{ flex: 0, maxHeight: '100px' }}>
+            <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', paddingRight: '16px' }}>
+              {imagesToSend.map((img, index) => (
+                <View 
+                  key={img.id} 
+                  style={{
+                    position: 'relative',
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    border: '1px solid #E2E8F0'
+                  }}
+                >
+                  <Image 
+                    src={img.localUrl || img.url} 
+                    mode="aspectFill"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                  <View 
+                    style={{
+                      position: 'absolute',
+                      top: '4px',
+                      left: '4px',
+                      backgroundColor: 'rgba(0,0,0,0.6)',
+                      borderRadius: '4px',
+                      paddingLeft: '4px',
+                      paddingRight: '4px',
+                      paddingTop: '1px',
+                      paddingBottom: '1px'
+                    }}
+                  >
+                    <Text className="block text-xs text-white">
+                      {img.imageType === 'reference' ? '参考' : '素材'}
+                    </Text>
+                  </View>
+                  {(img.aspects?.length || img.position) && (
+                    <View 
+                      style={{
+                        position: 'absolute',
+                        bottom: '0',
+                        left: '0',
+                        right: '0',
+                        backgroundColor: 'rgba(0,0,0,0.6)',
+                        paddingLeft: '4px',
+                        paddingRight: '4px',
+                        paddingTop: '2px',
+                        paddingBottom: '2px'
+                      }}
+                    >
+                      <Text className="block text-xs text-white truncate">
+                        {img.aspects?.join('、') || img.position}
+                      </Text>
+                    </View>
+                  )}
+                  <View 
+                    style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      backgroundColor: '#EF4444',
+                      borderRadius: '50%',
+                      width: '20px',
+                      height: '20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    onClick={() => removePendingImage(img.id)}
+                  >
+                    <Text className="block text-xs text-white">-</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScrollArea>
+        </View>
+      )}
 
       {/* 底部固定区域：输入框 + TabBar */}
       <View 
