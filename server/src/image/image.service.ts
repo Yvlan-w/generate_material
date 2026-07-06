@@ -172,7 +172,7 @@ export class ImageService {
    * 多轮对话接口 - 需求收集Agent
    * 根据当前状态决定下一步行动
    */
-  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>): Promise<ChatResponse> {
+  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>, referenceImages?: Array<{ url: string; aspects?: string[] }>, includedImages?: Array<{ url: string; position?: string }>): Promise<ChatResponse> {
     console.log(`\n===========================================`);
     console.log(`[Chat] NEW REQUEST`);
     console.log(`[Chat] Session: ${sessionId}`);
@@ -182,6 +182,8 @@ export class ImageService {
     console.log(`[Chat] Image Type: ${imageType}`);
     console.log(`[Chat] Image URLs: ${JSON.stringify(imageUrls)}`);
     console.log(`[Chat] Image Details: ${JSON.stringify(imageDetails)}`);
+    console.log(`[Chat] Reference Images (new): ${JSON.stringify(referenceImages)}`);
+    console.log(`[Chat] Included Images (new): ${JSON.stringify(includedImages)}`);
     console.log(`===========================================`);
     
     // 获取或创建session数据
@@ -202,9 +204,73 @@ export class ImageService {
       console.log(`[Chat] Session structuredNeeds:`, JSON.stringify(session.structuredNeeds));
     }
     
-    // 处理图片上传
-    if (imageType && imageUrls && imageUrls.length > 0) {
-      console.log(`[Chat] Processing ${imageType} images: ${imageUrls.length}`);
+    // 处理图片上传（新接口：同时支持参考图片和素材图片）
+    if (referenceImages && referenceImages.length > 0) {
+      console.log(`[Chat] Processing reference images (new API): ${referenceImages.length}`);
+      if (!session.structuredNeeds) {
+        session.structuredNeeds = {};
+      }
+      
+      session.structuredNeeds.referenceImages = [
+        ...(session.structuredNeeds.referenceImages || []),
+        ...referenceImages.map(img => ({
+          url: img.url,
+          aspects: img.aspects || []
+        }))
+      ];
+      session.collectedFields.add('referenceImages');
+
+      const allAspects = referenceImages.flatMap(img => img.aspects || []);
+      allAspects.forEach(aspect => {
+        if (aspect.includes('色调') || aspect.includes('颜色') || aspect.includes('色彩')) {
+          if (!session.structuredNeeds!.colorTone) {
+            session.structuredNeeds!.colorTone = '与参考图一致';
+            session.collectedFields.add('colorTone');
+          }
+        }
+        if (aspect.includes('风格') || aspect.includes('样式')) {
+          if (!session.structuredNeeds!.style) {
+            session.structuredNeeds!.style = '与参考图一致';
+            session.collectedFields.add('style');
+          }
+        }
+        if (aspect.includes('构图') || aspect.includes('布局')) {
+          if (!session.structuredNeeds!.scene) {
+            session.structuredNeeds!.scene = '与参考图一致';
+            session.collectedFields.add('scene');
+          }
+        }
+        if (aspect.includes('氛围') || aspect.includes('情感') || aspect.includes('感觉')) {
+          if (!session.structuredNeeds!.emotion) {
+            session.structuredNeeds!.emotion = '与参考图一致';
+            session.collectedFields.add('emotion');
+          }
+        }
+      });
+    }
+    
+    if (includedImages && includedImages.length > 0) {
+      console.log(`[Chat] Processing included images (new API): ${includedImages.length}`);
+      if (!session.structuredNeeds) {
+        session.structuredNeeds = {};
+      }
+      
+      const newElements = includedImages.map(img => ({
+        type: 'image' as const,
+        value: img.url,
+        position: img.position || ''
+      }));
+      
+      session.structuredNeeds.includedElements = [
+        ...(session.structuredNeeds.includedElements || []),
+        ...newElements
+      ];
+      session.collectedFields.add('includedElements');
+    }
+    
+    // 处理图片上传（旧接口：兼容单种类型图片）
+    if (!referenceImages && !includedImages && imageType && imageUrls && imageUrls.length > 0) {
+      console.log(`[Chat] Processing ${imageType} images (old API): ${imageUrls.length}`);
       if (!session.structuredNeeds) {
         session.structuredNeeds = {};
       }
@@ -265,7 +331,9 @@ export class ImageService {
         ];
         session.collectedFields.add('includedElements');
       }
-      
+    }
+    
+    if ((referenceImages && referenceImages.length > 0) || (includedImages && includedImages.length > 0) || (imageType && imageUrls && imageUrls.length > 0)) {
       console.log(`[Chat] Updated structuredNeeds after image upload:`, JSON.stringify(session.structuredNeeds));
     }
     
@@ -374,22 +442,29 @@ export class ImageService {
     console.log(`[Collecting] After update - collectedFields: ${Array.from(session.collectedFields)}`);
     console.log(`[Collecting] After update - structuredNeeds:`, JSON.stringify(session.structuredNeeds));
 
+    // 检查用户是否触发生成指令（无论必填字段是否完整）
+    const triggerWords = ['生成', '开始', '确认', '就这样', '出图', 'go', 'generate', 'start'];
+    const userSaysGenerate = triggerWords.some((w) =>
+      message.trim().toLowerCase().includes(w.toLowerCase()),
+    );
+
+    if (userSaysGenerate && session.structuredNeeds) {
+      // 用户明确要求生成，立即开始（不管必填字段是否完整）
+      console.log(`[Collecting] ✅ User triggered generation! Starting immediately regardless of field completeness`);
+      console.log(`[Collecting] Missing required fields: ${REQUIRED_NEED_FIELDS.filter(f => !session.collectedFields.has(f))}`);
+
+      session.messages.push({
+        role: 'assistant',
+        content: '收到，正在为您进行合规校验并生成素材，请稍候...',
+      });
+
+      return await this.proceedToGeneration(session);
+    }
+
     if (isComplete && session.structuredNeeds) {
       // 必填字段已齐全 —— 自动进入合规 + 生成流程，不再等待用户确认
       console.log(`[Collecting] ✅ REQUIRED FIELDS ARE COMPLETE! Auto-proceeding to generation`);
 
-      const triggerWords = ['生成', '开始', '确认', '就这样', '出图', 'go', 'generate', 'start'];
-      const userSaysGenerate = triggerWords.some((w) =>
-        message.trim().toLowerCase().includes(w.toLowerCase()),
-      );
-
-      // 如果用户说"重新生成"之类的词，直接走生成流程
-      if (userSaysGenerate) {
-        console.log(`[Collecting] User said generate trigger word, skipping status message`);
-        return await this.proceedToGeneration(session);
-      }
-
-      // 展示一个"正在为您生成"的状态提示，再调用生成流程
       session.messages.push({
         role: 'assistant',
         content: '需求已收集完整，正在为您进行合规校验并生成素材，请稍候...',
@@ -748,8 +823,15 @@ ${needsText}
     const sizeHint = needs.size || this.inferSizeFromUsage(needs.usage);
 
     // 参考图片提示
-    const referenceImageHint = needs.referenceImages && needs.referenceImages.length > 0
-      ? `参考图片：\n${needs.referenceImages.map((img, idx) => 
+    const referenceImages = needs.referenceImages || [];
+    const hasReferenceImages = referenceImages.length > 0;
+    console.log('[Prompts] 参考图片数量:', hasReferenceImages ? referenceImages.length : 0);
+    if (hasReferenceImages) {
+      console.log('[Prompts] 参考图片详情:', JSON.stringify(referenceImages));
+    }
+    
+    const referenceImageHint = hasReferenceImages
+      ? `参考图片：\n${referenceImages.map((img, idx) => 
           `图片${idx + 1}：借鉴方面为${img.aspects?.join('、') || '整体风格'}`
         ).join('\n')}\n\n生成的图片风格、色调、构图应与参考图片保持一致。`
       : '';
@@ -1245,7 +1327,7 @@ ${formatNeedsForPrompt(currentNeeds)}
   }
 
   /**
-   * 图片参数微调（保留原有功能，同时保留原始需求上下文）
+   * 图片参数微调（保留原有功能，同时保留原始需求上下文和参考图片）
    */
   async adjustImage(imageId: string, params: any, imageUrl?: string) {
     console.log('[Adjust] 图片微调:', { imageId, params, imageUrl });
@@ -1256,34 +1338,31 @@ ${formatNeedsForPrompt(currentNeeds)}
       (imageUrl ? this.generatedImages.get(`url:${imageUrl}`) : undefined);
     const originalPrompt = original?.prompt || original?.structuredNeeds;
 
-    const basePromptParts: string[] = [];
+    let structuredNeeds: StructuredNeeds | null = null;
     if (originalPrompt) {
       if (typeof originalPrompt === 'string') {
         try {
           const parsed = JSON.parse(originalPrompt);
           if (parsed && typeof parsed === 'object') {
-            const structured = parsed as StructuredNeeds;
-            if (structured.theme) basePromptParts.push(structured.theme);
-            if (structured.targetAudience) basePromptParts.push(`面向${structured.targetAudience}`);
-            if (structured.usage) basePromptParts.push(`用于${structured.usage}`);
-            if (structured.colorTone) basePromptParts.push(`${structured.colorTone}色调`);
-            if (structured.style) basePromptParts.push(`${structured.style}风格`);
-            if (structured.scene) basePromptParts.push(structured.scene);
-            if (structured.emotion) basePromptParts.push(`${structured.emotion}氛围`);
+            structuredNeeds = parsed as StructuredNeeds;
           }
         } catch {
-          basePromptParts.push(originalPrompt);
+          console.error('[Adjust] Failed to parse original prompt as JSON');
         }
       } else {
-        const structured = originalPrompt as StructuredNeeds;
-        if (structured.theme) basePromptParts.push(structured.theme);
-        if (structured.targetAudience) basePromptParts.push(`面向${structured.targetAudience}`);
-        if (structured.usage) basePromptParts.push(`用于${structured.usage}`);
-        if (structured.colorTone) basePromptParts.push(`${structured.colorTone}色调`);
-        if (structured.style) basePromptParts.push(`${structured.style}风格`);
-        if (structured.scene) basePromptParts.push(structured.scene);
-        if (structured.emotion) basePromptParts.push(`${structured.emotion}氛围`);
+        structuredNeeds = originalPrompt as StructuredNeeds;
       }
+    }
+
+    const basePromptParts: string[] = [];
+    if (structuredNeeds) {
+      if (structuredNeeds.theme) basePromptParts.push(structuredNeeds.theme);
+      if (structuredNeeds.targetAudience) basePromptParts.push(`面向${structuredNeeds.targetAudience}`);
+      if (structuredNeeds.usage) basePromptParts.push(`用于${structuredNeeds.usage}`);
+      if (structuredNeeds.colorTone) basePromptParts.push(`${structuredNeeds.colorTone}色调`);
+      if (structuredNeeds.style) basePromptParts.push(`${structuredNeeds.style}风格`);
+      if (structuredNeeds.scene) basePromptParts.push(structuredNeeds.scene);
+      if (structuredNeeds.emotion) basePromptParts.push(`${structuredNeeds.emotion}氛围`);
     }
 
     // 用户新传入的微调参数优先级更高，覆盖原始需求中的对应字段
@@ -1302,17 +1381,36 @@ ${formatNeedsForPrompt(currentNeeds)}
 
     // 解析原始需求中的 size/usage，保持原始比例
     let sizeHint: string | undefined;
-    if (originalPrompt && typeof originalPrompt !== 'string') {
-      const structured = originalPrompt as StructuredNeeds;
-      sizeHint = structured.size || this.inferSizeFromUsage(structured.usage);
+    if (structuredNeeds) {
+      sizeHint = structuredNeeds.size || this.inferSizeFromUsage(structuredNeeds.usage);
+    }
+
+    // 提取参考图片
+    const referenceImages = structuredNeeds?.referenceImages || [];
+    console.log('[Adjust] 参考图片数量:', referenceImages.length);
+    if (referenceImages.length > 0) {
+      console.log('[Adjust] 参考图片:', referenceImages.map(img => img.url).join(', '));
     }
 
     try {
       const sdkSize = this.resolveSdkSize(sizeHint);
-      const response = await this.imageClient.generate({
+      
+      const generateParams: {
+        prompt: string;
+        size: string;
+        image?: string | string[];
+      } = {
         prompt: adjustedPrompt,
         size: sdkSize,
-      });
+      };
+      
+      if (referenceImages.length > 0) {
+        const imageUrls = referenceImages.map(img => img.url);
+        generateParams.image = imageUrls.length === 1 ? imageUrls[0] : imageUrls;
+        console.log('[Adjust] 参考图片参数:', generateParams.image);
+      }
+
+      const response = await this.imageClient.generate(generateParams as any);
 
       const helper = this.imageClient.getResponseHelper(response);
 

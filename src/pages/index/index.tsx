@@ -160,29 +160,28 @@ const IndexPage = () => {
         const referenceImages = imagesToSend.filter(img => img.imageType === 'reference');
         const includedElements = imagesToSend.filter(img => img.imageType === 'included');
         
-        if (referenceImages.length > 0) {
+        if (referenceImages.length > 0 && includedElements.length > 0) {
+          requestData.referenceImages = referenceImages.map(img => ({
+            url: img.url,
+            aspects: img.aspects
+          }));
+          requestData.includedImages = includedElements.map(img => ({
+            url: img.url,
+            position: img.position
+          }));
+          requestData.imageUrls = imagesToSend.map(img => img.url);
+        } else if (referenceImages.length > 0) {
           requestData.imageType = 'reference';
           requestData.imageUrls = referenceImages.map(img => img.url);
           requestData.imageDetails = referenceImages.map(img => ({
             url: img.url,
             aspects: img.aspects
           }));
-        }
-        
-        if (includedElements.length > 0) {
+        } else if (includedElements.length > 0) {
           requestData.imageType = 'included';
           requestData.imageUrls = includedElements.map(img => img.url);
           requestData.imageDetails = includedElements.map(img => ({
             url: img.url,
-            position: img.position
-          }));
-        }
-        
-        if (referenceImages.length > 0 && includedElements.length > 0) {
-          requestData.imageUrls = imagesToSend.map(img => img.url);
-          requestData.imageDetails = imagesToSend.map(img => ({
-            url: img.url,
-            aspects: img.aspects,
             position: img.position
           }));
         }

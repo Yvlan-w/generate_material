@@ -28,6 +28,8 @@ export class ImageController {
     imageType?: 'reference' | 'included';
     imageUrls?: string[];
     imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>;
+    referenceImages?: Array<{ url: string; aspects?: string[] }>;
+    includedImages?: Array<{ url: string; position?: string }>;
   }) {
     console.log('[API] Chat request:', body);
     
@@ -38,7 +40,9 @@ export class ImageController {
       body.userId,
       body.imageType,
       body.imageUrls,
-      body.imageDetails
+      body.imageDetails,
+      body.referenceImages,
+      body.includedImages
     );
     
     return {
