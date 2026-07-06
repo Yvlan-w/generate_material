@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { View, Text, Image } from '@tarojs/components'
+import { View, Text, Image, Button as TaroButton } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { Button } from '@/components/ui/button'
 import { Network } from '@/network'
-import { Sparkles, ShieldCheck, LoaderCircle, UserCircle } from 'lucide-react-taro'
+import { Sparkles, ShieldCheck, LoaderCircle, User } from 'lucide-react-taro'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
@@ -196,9 +196,9 @@ export default function LoginPage() {
                 >
                   选择头像
                 </Text>
-                <button
+                <TaroButton
                   className="avatar-button"
-                  open-type="chooseAvatar"
+                  openType="chooseAvatar"
                   onChooseAvatar={onChooseAvatar}
                   style={{
                     width: '100px',
@@ -226,9 +226,9 @@ export default function LoginPage() {
                       mode="aspectFill"
                     />
                   ) : (
-                    <UserCircle size={48} color="#94A3B8" />
+                    <User size={48} color="#94A3B8" />
                   )}
-                </button>
+                </TaroButton>
               </View>
 
               <View style={{ marginBottom: '20px' }}>
