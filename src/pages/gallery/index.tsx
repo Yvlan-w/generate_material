@@ -35,6 +35,11 @@ const GalleryPage = () => {
 
   // 加载图片列表
   useEffect(() => {
+    const isLoggedIn = Taro.getStorageSync('isLoggedIn');
+    if (!isLoggedIn) {
+      Taro.redirectTo({ url: '/pages/login/index' });
+      return;
+    }
     loadImages();
   }, [filter]);
 

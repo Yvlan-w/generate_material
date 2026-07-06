@@ -96,6 +96,13 @@ const IndexPage = () => {
   const [scrollToId, setScrollToId] = useState<string>('');
 
   useEffect(() => {
+    // 检查登录状态
+    const isLoggedIn = Taro.getStorageSync('isLoggedIn');
+    if (!isLoggedIn) {
+      Taro.redirectTo({ url: '/pages/login/index' });
+      return;
+    }
+    
     if (scrollToId) {
       const timer = setTimeout(() => {
         setScrollToId('');

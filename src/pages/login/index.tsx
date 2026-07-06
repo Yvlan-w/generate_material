@@ -13,19 +13,33 @@ export default function LoginPage() {
     setLoading(true)
     try {
       let code = 'test_h5_code'
+      let nickname = '用户'
+      let avatarUrl = ''
       
-      // 小程序环境获取真实登录凭证
+      // 小程序环境获取真实登录凭证和用户信息
       if (isMiniApp) {
         const loginResult = await Taro.login()
         code = loginResult.code
         console.log('小程序登录凭证:', code)
+        
+        // 获取用户信息（微信授权登录）
+        try {
+          const userProfile = await Taro.getUserProfile({
+            desc: '用于完成登录和个性化服务'
+          })
+          console.log('用户信息:', userProfile)
+          nickname = userProfile.userInfo.nickName
+          avatarUrl = userProfile.userInfo.avatarUrl
+        } catch (profileError) {
+          console.log('用户取消授权或获取用户信息失败:', profileError)
+        }
       }
 
       // 调用后端登录接口
       const response = await Network.request({
         url: '/api/auth/login',
         method: 'POST',
-        data: { code, nickname: '用户' }
+        data: { code, nickname, avatarUrl }
       })
 
       console.log('登录响应:', response)
@@ -56,9 +70,9 @@ export default function LoginPage() {
         duration: 1500
       })
 
-      // 跳转到首页（使用 switchTab，因为首页是 tabBar 页面）
+      // 跳转到首页（使用 redirectTo，因为没有原生 TabBar）
       setTimeout(() => {
-        Taro.switchTab({ url: '/pages/index/index' })
+        Taro.redirectTo({ url: '/pages/index/index' })
       }, 1500)
 
     } catch (error: any) {
