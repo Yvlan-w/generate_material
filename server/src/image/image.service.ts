@@ -895,14 +895,16 @@ ${needsText}
       const generateParams: {
         prompt: string;
         size: string;
-        referenceImages?: string[];
+        image?: string | string[];
       } = {
         prompt: finalPrompt,
         size: sdkSize,
       };
       
       if (referenceImages.length > 0) {
-        generateParams.referenceImages = referenceImages.map(img => img.url);
+        const imageUrls = referenceImages.map(img => img.url);
+        generateParams.image = imageUrls.length === 1 ? imageUrls[0] : imageUrls;
+        console.log('[Image] 参考图片参数:', generateParams.image);
       }
 
       const response = await this.imageClient.generate(generateParams as any);
