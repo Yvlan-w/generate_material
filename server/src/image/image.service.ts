@@ -220,6 +220,34 @@ export class ImageService {
           ...newReferenceImages
         ];
         session.collectedFields.add('referenceImages');
+
+        const allAspects = newReferenceImages.flatMap(img => img.aspects || []);
+        allAspects.forEach(aspect => {
+          if (aspect.includes('色调') || aspect.includes('颜色') || aspect.includes('色彩')) {
+            if (!session.structuredNeeds!.colorTone) {
+              session.structuredNeeds!.colorTone = '与参考图一致';
+              session.collectedFields.add('colorTone');
+            }
+          }
+          if (aspect.includes('风格') || aspect.includes('样式')) {
+            if (!session.structuredNeeds!.style) {
+              session.structuredNeeds!.style = '与参考图一致';
+              session.collectedFields.add('style');
+            }
+          }
+          if (aspect.includes('构图') || aspect.includes('布局')) {
+            if (!session.structuredNeeds!.scene) {
+              session.structuredNeeds!.scene = '与参考图一致';
+              session.collectedFields.add('scene');
+            }
+          }
+          if (aspect.includes('氛围') || aspect.includes('情感') || aspect.includes('感觉')) {
+            if (!session.structuredNeeds!.emotion) {
+              session.structuredNeeds!.emotion = '与参考图一致';
+              session.collectedFields.add('emotion');
+            }
+          }
+        });
       } else if (imageType === 'included') {
         const newElements = imageDetails ? imageDetails.map(img => ({
           type: 'image' as const,
@@ -719,11 +747,20 @@ ${needsText}
     // 根据 usage 推导画面尺寸建议（作为 size 的兜底）
     const sizeHint = needs.size || this.inferSizeFromUsage(needs.usage);
 
+    // 参考图片提示
+    const referenceImageHint = needs.referenceImages && needs.referenceImages.length > 0
+      ? `参考图片：\n${needs.referenceImages.map((img, idx) => 
+          `图片${idx + 1}：借鉴方面为${img.aspects?.join('、') || '整体风格'}`
+        ).join('\n')}\n\n生成的图片风格、色调、构图应与参考图片保持一致。`
+      : '';
+
     const promptGenerator = `根据以下需求，生成一张营销素材图片的正、负向提示词。
 
 已收集的全部需求：
 ${needsText}
 ${sizeHint ? `- 建议尺寸/比例：${sizeHint}` : ''}
+
+${referenceImageHint}
 
 生成要求：
 1. positivePrompt（正向提示词）：用一段连贯的中文描述画面，务必覆盖以下要素：
@@ -769,6 +806,9 @@ ${sizeHint ? `- 建议尺寸/比例：${sizeHint}` : ''}
     if (needs.scene) fallbackParts.push(`场景：${needs.scene}`);
     if (needs.emotion) fallbackParts.push(`${needs.emotion}氛围`);
     if (sizeHint) fallbackParts.push(`尺寸${sizeHint}`);
+    if (needs.referenceImages && needs.referenceImages.length > 0) {
+      fallbackParts.push(`参考图片风格：${needs.referenceImages.map(img => img.aspects?.join('、') || '整体风格').join('，')}`);
+    }
 
     return {
       positivePrompt: `${fallbackParts.join('，')}，专业商务摄影，高清，构图专业，符合投资咨询行业形象`,
