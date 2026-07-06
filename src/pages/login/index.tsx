@@ -1,50 +1,53 @@
 import { useState } from 'react'
-import { View, Text } from '@tarojs/components'
+import { View, Text, Image } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { Button } from '@/components/ui/button'
 import { Network } from '@/network'
-import { Sparkles, ShieldCheck, LoaderCircle } from 'lucide-react-taro'
+import { Sparkles, ShieldCheck, LoaderCircle, UserCircle } from 'lucide-react-taro'
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const [nickname, setNickname] = useState('')
   const isMiniApp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP || Taro.getEnv() === Taro.ENV_TYPE.TT
 
+  const onChooseAvatar = (e: any) => {
+    const { detail } = e
+    setAvatarUrl(detail.avatarUrl)
+  }
+
+  const onNicknameChange = (e: any) => {
+    setNickname(e.detail.value)
+  }
+
   const handleLogin = async () => {
+    if (!nickname.trim()) {
+      Taro.showToast({
+        title: '请输入昵称',
+        icon: 'none',
+        duration: 2000
+      })
+      return
+    }
+
     setLoading(true)
     try {
       let code = 'test_h5_code'
-      let nickname = '用户'
-      let avatarUrl = ''
       
-      // 小程序环境获取真实登录凭证和用户信息
       if (isMiniApp) {
         const loginResult = await Taro.login()
         code = loginResult.code
         console.log('小程序登录凭证:', code)
-        
-        // 获取用户信息（微信授权登录）
-        try {
-          const userProfile = await Taro.getUserProfile({
-            desc: '用于完成登录和个性化服务'
-          })
-          console.log('用户信息:', userProfile)
-          nickname = userProfile.userInfo.nickName
-          avatarUrl = userProfile.userInfo.avatarUrl
-        } catch (profileError) {
-          console.log('用户取消授权或获取用户信息失败:', profileError)
-        }
       }
 
-      // 调用后端登录接口
       const response = await Network.request({
         url: '/api/auth/login',
         method: 'POST',
-        data: { code, nickname, avatarUrl }
+        data: { code, nickname: nickname.trim(), avatarUrl }
       })
 
       console.log('登录响应:', response)
 
-      // 解析响应数据 - 后端返回 { code: 200, msg: 'success', data: { user, token } }
       const result = response.data?.data
       if (!result || !result.user) {
         throw new Error('登录响应数据异常')
@@ -52,7 +55,6 @@ export default function LoginPage() {
 
       const { user, token } = result
 
-      // 保存用户信息到本地
       Taro.setStorageSync('userInfo', {
         id: user.id,
         openid: user.openid,
@@ -63,14 +65,12 @@ export default function LoginPage() {
       Taro.setStorageSync('isLoggedIn', true)
       Taro.setStorageSync('token', token)
 
-      // 显示成功提示
       await Taro.showToast({
         title: user.is_admin ? '管理员登录成功' : '登录成功',
         icon: 'success',
         duration: 1500
       })
 
-      // 跳转到首页（使用 redirectTo，因为没有原生 TabBar）
       setTimeout(() => {
         Taro.redirectTo({ url: '/pages/index/index' })
       }, 1500)
@@ -95,14 +95,13 @@ export default function LoginPage() {
       backgroundColor: '#F8FAFC'
     }}
     >
-      {/* Logo 区域 */}
       <View style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: '80px',
-        paddingBottom: '40px'
+        paddingTop: '60px',
+        paddingBottom: '30px'
       }}
       >
         <View style={{
@@ -114,7 +113,7 @@ export default function LoginPage() {
           alignItems: 'center',
           justifyContent: 'center',
           boxShadow: '0 8px 24px rgba(59,130,246,0.3)',
-          marginBottom: '24px'
+          marginBottom: '20px'
         }}
         >
           <Sparkles size={40} color="#FFFFFF" />
@@ -123,7 +122,7 @@ export default function LoginPage() {
           fontSize: '24px',
           fontWeight: '700',
           color: '#1E293B',
-          marginBottom: '8px'
+          marginBottom: '6px'
         }}
         >
           营销素材生成平台
@@ -143,7 +142,6 @@ export default function LoginPage() {
         </Text>
       </View>
 
-      {/* 登录卡片 */}
       <View style={{
         flex: 1,
         paddingLeft: '24px',
@@ -161,7 +159,6 @@ export default function LoginPage() {
           margin: '0 auto'
         }}
         >
-          {/* 标题 */}
           <View style={{ textAlign: 'center', marginBottom: '24px' }}>
             <Text style={{
               fontSize: '20px',
@@ -177,11 +174,95 @@ export default function LoginPage() {
               marginTop: '8px'
             }}
             >
-              登录后可使用图片生成功能
+              授权后可使用图片生成功能
             </Text>
           </View>
 
-          {/* 登录按钮 */}
+          {isMiniApp && (
+            <View style={{ marginBottom: '20px' }}>
+              <View style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                marginBottom: '20px'
+              }}
+              >
+                <Text style={{
+                  fontSize: '14px',
+                  color: '#64748B',
+                  marginBottom: '12px',
+                  alignSelf: 'flex-start'
+                }}
+                >
+                  选择头像
+                </Text>
+                <button
+                  className="avatar-button"
+                  open-type="chooseAvatar"
+                  onChooseAvatar={onChooseAvatar}
+                  style={{
+                    width: '100px',
+                    height: '100px',
+                    borderRadius: '50%',
+                    border: '2px dashed #CBD5E1',
+                    backgroundColor: '#F8FAFC',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0',
+                    margin: '0',
+                    outline: 'none'
+                  }}
+                >
+                  {avatarUrl ? (
+                    <Image
+                      src={avatarUrl}
+                      style={{
+                        width: '100px',
+                        height: '100px',
+                        borderRadius: '50%',
+                        objectFit: 'cover'
+                      }}
+                      mode="aspectFill"
+                    />
+                  ) : (
+                    <UserCircle size={48} color="#94A3B8" />
+                  )}
+                </button>
+              </View>
+
+              <View style={{ marginBottom: '20px' }}>
+                <Text style={{
+                  fontSize: '14px',
+                  color: '#64748B',
+                  marginBottom: '8px',
+                  display: 'block'
+                }}
+                >
+                  设置昵称
+                </Text>
+                <input
+                  type="nickname"
+                  className="nickname-input"
+                  placeholder="请输入您的昵称"
+                  value={nickname}
+                  onChange={onNicknameChange}
+                  style={{
+                    width: '100%',
+                    height: '48px',
+                    backgroundColor: '#F8FAFC',
+                    borderRadius: '12px',
+                    paddingLeft: '16px',
+                    paddingRight: '16px',
+                    fontSize: '14px',
+                    border: '1px solid #E2E8F0',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </View>
+            </View>
+          )}
+
           <Button
             style={{
               width: '100%',
@@ -191,7 +272,7 @@ export default function LoginPage() {
               boxShadow: '0 4px 12px rgba(59,130,246,0.3)'
             }}
             onClick={handleLogin}
-            disabled={loading}
+            disabled={loading || (isMiniApp && !nickname.trim())}
           >
             {loading ? (
               <View style={{
@@ -231,7 +312,6 @@ export default function LoginPage() {
             )}
           </Button>
 
-          {/* 提示信息 */}
           <View style={{
             textAlign: 'center',
             marginTop: '20px'
@@ -243,12 +323,12 @@ export default function LoginPage() {
             }}
             >
               {isMiniApp 
-                ? '点击按钮将获取微信授权并登录' 
+                ? '点击登录即表示同意获取您的头像和昵称' 
                 : '当前为H5开发模式，点击按钮模拟登录'}
             </Text>
             {!isMiniApp && (
               <View style={{
-                backgroundColor: '#FEF3C7',
+                backgroundColor: '#FEFCE8',
                 borderRadius: '8px',
                 padding: '12px',
                 marginTop: '12px'
@@ -259,7 +339,7 @@ export default function LoginPage() {
                   color: '#B45309'
                 }}
                 >
-                  提示：微信登录功能仅在小程序中可用
+                  提示：微信头像和昵称授权仅在小程序中可用
                 </Text>
               </View>
             )}
@@ -267,7 +347,6 @@ export default function LoginPage() {
         </View>
       </View>
 
-      {/* 底部信息 */}
       <View style={{
         textAlign: 'center',
         paddingBottom: '32px',
