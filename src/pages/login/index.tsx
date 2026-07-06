@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, Image, Button as TaroButton } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,14 @@ export default function LoginPage() {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [nickname, setNickname] = useState('')
   const isMiniApp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP || Taro.getEnv() === Taro.ENV_TYPE.TT
+
+  useEffect(() => {
+    const savedUserInfo = Taro.getStorageSync('userInfo')
+    if (savedUserInfo) {
+      setNickname(savedUserInfo.nickname || '')
+      setAvatarUrl(savedUserInfo.avatar_url || '')
+    }
+  }, [])
 
   const onChooseAvatar = (e: any) => {
     const { detail } = e
@@ -86,6 +94,8 @@ export default function LoginPage() {
       setLoading(false)
     }
   }
+
+  const canLogin = nickname.trim().length > 0
 
   return (
     <View style={{
@@ -211,7 +221,8 @@ export default function LoginPage() {
                     justifyContent: 'center',
                     padding: '0',
                     margin: '0',
-                    outline: 'none'
+                    outline: 'none',
+                    background: 'none'
                   }}
                 >
                   {avatarUrl ? (
@@ -266,13 +277,13 @@ export default function LoginPage() {
           <Button
             style={{
               width: '100%',
-              backgroundColor: '#3B82F6',
+              backgroundColor: canLogin ? '#3B82F6' : '#94A3B8',
               borderRadius: '16px',
               height: '52px',
-              boxShadow: '0 4px 12px rgba(59,130,246,0.3)'
+              boxShadow: canLogin ? '0 4px 12px rgba(59,130,246,0.3)' : 'none'
             }}
             onClick={handleLogin}
-            disabled={loading || (isMiniApp && !nickname.trim())}
+            disabled={loading || !canLogin}
           >
             {loading ? (
               <View style={{
