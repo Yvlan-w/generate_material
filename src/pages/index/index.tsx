@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, Image } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { Input } from '@/components/ui/input';
@@ -93,6 +93,16 @@ const IndexPage = () => {
   }
   
   const [imagesToSend, setImagesToSend] = useState<PendingImage[]>([]);
+  const [scrollToId, setScrollToId] = useState<string>('');
+
+  useEffect(() => {
+    if (scrollToId) {
+      const timer = setTimeout(() => {
+        setScrollToId('');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [scrollToId]);
 
   // 发送消息
   const handleSendMessage = async () => {
@@ -114,6 +124,7 @@ const IndexPage = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsProcessing(true);
+    setScrollToId(userMessage.id);
 
     // 根据当前阶段给出不同的"处理中"提示，让用户感知到后台在做什么
     const processingHint = getProcessingHint(sessionState.stage, userMessage.content);
@@ -216,6 +227,7 @@ const IndexPage = () => {
             data: data.generatedImage ? { imageUrl: data.generatedImage, needs: data.structuredNeeds, disclaimer: data.disclaimer } : data.data
           };
           setMessages(prev => [...prev, agentMessage]);
+          setScrollToId(agentMessage.id);
         }
         
         if (data.stage === 'violation' && data.complianceResult) {
@@ -228,6 +240,7 @@ const IndexPage = () => {
             data: data.complianceResult
           };
           setMessages(prev => [...prev, warningMessage]);
+          setScrollToId(warningMessage.id);
         }
         
         if (data.stage === 'generating' && data.complianceResult?.passed) {
@@ -239,6 +252,7 @@ const IndexPage = () => {
             type: 'compliance-result'
           };
           setMessages(prev => [...prev, complianceMessage]);
+          setScrollToId(complianceMessage.id);
         }
         
         if (data.stage === 'completed' && data.generatedImage && !data.reply) {
@@ -255,6 +269,7 @@ const IndexPage = () => {
             }
           };
           setMessages(prev => [...prev, imageMessage]);
+          setScrollToId(imageMessage.id);
         }
       } else {
         setMessages(prev => prev.filter((m) => m.type !== 'thinking'));
@@ -803,10 +818,12 @@ const IndexPage = () => {
         paddingTop: '16px',
           paddingBottom: '160px'
       }}
+      scrollIntoView={scrollToId}
       >
         {messages.map((message) => (
           <View 
             key={message.id}
+            id={message.id}
             style={{
               display: 'flex',
               marginBottom: '16px',

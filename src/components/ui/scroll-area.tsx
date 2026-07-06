@@ -6,8 +6,9 @@ const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollView>,
   React.ComponentPropsWithoutRef<typeof ScrollView> & {
       orientation?: "vertical" | "horizontal" | "both"
+      scrollIntoView?: string
   }
->(({ className, children, orientation = "vertical", ...props }, ref) => {
+>(({ className, children, orientation = "vertical", scrollIntoView, ...props }, ref) => {
     const scrollX = orientation === "horizontal" || orientation === "both"
     const scrollY = orientation === "vertical" || orientation === "both"
 
@@ -17,6 +18,8 @@ const ScrollArea = React.forwardRef<
       className={cn("relative", className)}
       scrollY={scrollY}
       scrollX={scrollX}
+      scrollIntoView={scrollIntoView}
+      scrollWithAnimation={true}
       style={{
         overflowX: scrollX ? 'auto' : 'hidden',
         overflowY: scrollY ? 'auto' : 'hidden',
