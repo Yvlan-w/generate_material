@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { View, Text, Image, Button as TaroButton } from '@tarojs/components'
+import { View, Text, Image, Button as TaroButton, Input } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { Button } from '@/components/ui/button'
 import { Network } from '@/network'
@@ -252,12 +252,12 @@ export default function LoginPage() {
                 >
                   设置昵称
                 </Text>
-                <input
+                <Input
                   type="nickname"
                   className="nickname-input"
                   placeholder="请输入您的昵称"
                   value={nickname}
-                  onChange={onNicknameChange}
+                  onInput={onNicknameChange}
                   style={{
                     width: '100%',
                     height: '48px',

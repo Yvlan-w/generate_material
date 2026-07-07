@@ -933,7 +933,7 @@ const IndexPage = () => {
           </View>
           <ScrollArea orientation="horizontal" style={{ flex: 0, maxHeight: '100px' }}>
             <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', paddingRight: '16px' }}>
-              {imagesToSend.map((img, index) => (
+              {imagesToSend.map((img) => (
                 <View 
                   key={img.id} 
                   style={{
