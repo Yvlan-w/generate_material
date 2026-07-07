@@ -20,7 +20,7 @@ export namespace Network {
         return Taro.request({
             ...option,
             url: createUrl(option.url),
-            timeout: option.timeout || 60000,
+            timeout: option.timeout || 300000,
         })
     }
 
@@ -28,7 +28,7 @@ export namespace Network {
         return Taro.uploadFile({
             ...option,
             url: createUrl(option.url),
-            timeout: option.timeout || 60000,
+            timeout: option.timeout || 300000,
         })
     }
 
@@ -36,7 +36,7 @@ export namespace Network {
         return Taro.downloadFile({
             ...option,
             url: createUrl(option.url),
-            timeout: option.timeout || 60000,
+            timeout: option.timeout || 300000,
         })
     }
 }

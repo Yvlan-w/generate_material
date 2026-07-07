@@ -39,6 +39,7 @@ export interface StructuredNeeds {
   size?: string;
   targetAudience?: string;
   usage?: string;
+  otherRequirements?: string;
   summary?: string;
   referenceImages?: ReferenceImage[];
   includedElements?: IncludedElement[];
@@ -55,6 +56,7 @@ const NEED_FIELD_LABELS: Record<keyof StructuredNeeds, string> = {
   size: '图片尺寸',
   targetAudience: '目标受众',
   usage: '使用场景',
+  otherRequirements: '其他需求',
   summary: '需求摘要',
   referenceImages: '参考图片',
   includedElements: '包含元素'
@@ -630,6 +632,7 @@ export class ImageService {
 字段说明：
 - referenceImages（参考图片）：用户可以上传参考图片，需要记录在哪些方面借鉴（如风格、色调、构图等）
 - includedElements（包含元素）：图片中必须包含的元素，可以是文字描述（如"公司logo"）或用户上传的素材图片，需要记录每个元素的使用位置（如左上角、底部居中、背景等）
+- otherRequirements（其他需求）：用户提到的但无法归类到以上字段的所有信息，全部记录在此，确保不遗漏任何用户需求细节
 
 你的任务：
 1. 理解用户最新的输入，分析是否包含新的需求信息
@@ -637,8 +640,9 @@ export class ImageService {
 3. 如果必填字段已齐全但可选字段仍有缺失，主动提示用户是否补充（例如"为了让素材更贴合使用场景，是否可以告诉我...？"）
 4. 对于 includedElements（包含元素），引导用户说明图片中必须包含哪些元素，以及每个元素的使用位置
 5. 对于 referenceImages（参考图片），询问用户是否有参考图片可以上传，以及想在哪些方面借鉴
-6. 不要一次问多个问题，一次只引导一个字段
-7. 避免重复已收集的信息
+6. 注意倾听用户的其他需求，对于无法归类到特定字段的信息，完整记录到其他需求中
+7. 不要一次问多个问题，一次只引导一个字段
+8. 避免重复已收集的信息
 
 回复要求：
 - 简洁友好，不超过3句话
@@ -674,11 +678,14 @@ ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
 - size: 图片尺寸或比例（如 1:1、16:9、竖版海报 1080x1920 等）
 - targetAudience: 目标受众（如高净值客户、年轻投资者、内部员工等）
 - usage: 使用场景（如朋友圈、公众号头图、海报、线下展架、短视频封面等）
+- otherRequirements: 其他需求（用户提到的但无法归类到以上字段的所有信息，全部记录在此，保持原始语义）
 - referenceImages: 参考图片（数组，每个元素为{"url":"图片URL","aspects":["借鉴方面1","借鉴方面2"]}）
 - includedElements: 包含元素（数组，每个元素为{"type":"image"|"text","value":"图片URL或文字描述","position":"使用位置"}）
 
+特别注意：对于用户输入中无法归类到上述具体字段的信息，必须完整记录到 otherRequirements 字段中，确保不遗漏任何用户需求细节。
+
 输出严格 JSON 格式，例如：
-{"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重","targetAudience":"高净值客户","usage":"朋友圈","size":"1:1","referenceImages":[{"url":"https://example.com/ref1.jpg","aspects":["色调","构图"]}],"includedElements":[{"type":"text","value":"公司logo","position":"左上角"},{"type":"image","value":"https://example.com/element1.jpg","position":"底部居中"}]}`;
+{"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重","targetAudience":"高净值客户","usage":"朋友圈","size":"1:1","otherRequirements":"希望整体感觉更加大气，不要太花哨","referenceImages":[{"url":"https://example.com/ref1.jpg","aspects":["色调","构图"]}],"includedElements":[{"type":"text","value":"公司logo","position":"左上角"},{"type":"image","value":"https://example.com/element1.jpg","position":"底部居中"}]}`;
 
     console.log(`[Extract] Calling LLM for extraction...`);
     const response = await this.llmClient.invoke(
@@ -888,6 +895,7 @@ ${referenceImageHint}
     if (needs.scene) fallbackParts.push(`场景：${needs.scene}`);
     if (needs.emotion) fallbackParts.push(`${needs.emotion}氛围`);
     if (sizeHint) fallbackParts.push(`尺寸${sizeHint}`);
+    if (needs.otherRequirements) fallbackParts.push(needs.otherRequirements);
     if (needs.referenceImages && needs.referenceImages.length > 0) {
       fallbackParts.push(`参考图片风格：${needs.referenceImages.map(img => img.aspects?.join('、') || '整体风格').join('，')}`);
     }
@@ -1161,9 +1169,10 @@ ${formatNeedsForPrompt(currentNeeds)}
 - size: 图片尺寸或比例
 - targetAudience: 目标受众
 - usage: 使用场景
+- otherRequirements: 其他需求（用户提到的但无法归类到以上字段的所有信息，全部记录在此）
 
 示例输出：
-{"colorTone": "深蓝色", "scene": "室内", "emotion": "更严肃"}`;
+{"colorTone": "深蓝色", "scene": "室内", "emotion": "更严肃", "otherRequirements": "希望整体感觉更加大气"}`;
 
     try {
       const response = await this.llmClient.invoke(
@@ -1363,6 +1372,7 @@ ${formatNeedsForPrompt(currentNeeds)}
       if (structuredNeeds.style) basePromptParts.push(`${structuredNeeds.style}风格`);
       if (structuredNeeds.scene) basePromptParts.push(structuredNeeds.scene);
       if (structuredNeeds.emotion) basePromptParts.push(`${structuredNeeds.emotion}氛围`);
+      if (structuredNeeds.otherRequirements) basePromptParts.push(structuredNeeds.otherRequirements);
     }
 
     // 用户新传入的微调参数优先级更高，覆盖原始需求中的对应字段
