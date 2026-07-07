@@ -843,6 +843,22 @@ ${needsText}
         ).join('\n')}\n\n生成的图片风格、色调、构图应与参考图片保持一致。`
       : '';
 
+    // 包含元素提示
+    const includedElements = needs.includedElements || [];
+    const hasIncludedElements = includedElements.length > 0;
+    console.log('[Prompts] 包含元素数量:', hasIncludedElements ? includedElements.length : 0);
+    if (hasIncludedElements) {
+      console.log('[Prompts] 包含元素详情:', JSON.stringify(includedElements));
+    }
+    
+    const includedElementsHint = hasIncludedElements
+      ? `包含元素：\n${includedElements.map((elem, idx) => {
+          const typeLabel = elem.type === 'image' ? '图片' : '文字';
+          const positionText = elem.position ? `，放置在${elem.position}` : '';
+          return `元素${idx + 1}：[${typeLabel}] ${elem.value}${positionText}`;
+        }).join('\n')}\n\n生成的图片中必须包含上述所有元素，并按照指定位置放置。`
+      : '';
+
     const promptGenerator = `根据以下需求，生成一张营销素材图片的正、负向提示词。
 
 已收集的全部需求：
@@ -850,6 +866,8 @@ ${needsText}
 ${sizeHint ? `- 建议尺寸/比例：${sizeHint}` : ''}
 
 ${referenceImageHint}
+
+${includedElementsHint}
 
 生成要求：
 1. positivePrompt（正向提示词）：用一段连贯的中文描述画面，务必覆盖以下要素：
@@ -860,6 +878,7 @@ ${referenceImageHint}
    - 目标受众的身份特征（targetAudience，例如"专业的理财顾问形象"、"年轻投资者"等）
    - 若涉及尺寸，应在提示词中体现构图比例（如 1:1 方图、16:9 横版、9:16 竖版）
    - 适当补充细节，如"专业的商务摄影"、"高清质感"、"专业构图"等
+   - 必须包含所有指定的包含元素，并按照指定位置放置
 2. negativePrompt（负向提示词）：列出需要避免的元素，例如低质量、违规文字、卡通风格、廉价感、杂乱背景、过多水印等。
 3. 正/负提示词均禁止出现任何可能违反投资咨询行业合规的文字（如收益承诺、夸大宣传、荐股等）。
 
@@ -1019,6 +1038,13 @@ ${needsText}
       console.log('[Image] 参考图片:', referenceImages.map(img => img.url).join(', '));
     }
 
+    const includedElements = needs?.includedElements || [];
+    const includedImages = includedElements.filter(elem => elem.type === 'image');
+    console.log('[Image] 包含图片元素数量:', includedImages.length);
+    if (includedImages.length > 0) {
+      console.log('[Image] 包含图片:', includedImages.map(img => img.value).join(', '));
+    }
+
     try {
       const finalPrompt = `${positivePrompt}，避免出现：${negativePrompt}`;
 
@@ -1031,10 +1057,14 @@ ${needsText}
         size: sdkSize,
       };
       
-      if (referenceImages.length > 0) {
-        const imageUrls = referenceImages.map(img => img.url);
-        generateParams.image = imageUrls.length === 1 ? imageUrls[0] : imageUrls;
-        console.log('[Image] 参考图片参数:', generateParams.image);
+      const allImageUrls = [
+        ...referenceImages.map(img => img.url),
+        ...includedImages.map(img => img.value)
+      ];
+      
+      if (allImageUrls.length > 0) {
+        generateParams.image = allImageUrls.length === 1 ? allImageUrls[0] : allImageUrls;
+        console.log('[Image] 图片参数（参考图+素材图）:', generateParams.image);
       }
 
       const response = await this.imageClient.generate(generateParams as any);
