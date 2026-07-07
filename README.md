@@ -1,6 +1,46 @@
-# Coze Mini Program
+# 投资咨询营销素材生成助手
 
-这是一个基于 [Taro 4](https://docs.taro.zone/docs/) + [Nest.js](https://nestjs.com/) 的前后端分离项目，由扣子编程 CLI 创建。
+这是一个基于 [Taro 4](https://docs.taro.zone/docs/) + [Nest.js](https://nestjs.com/) 的前后端分离项目，专为投资咨询行业打造的智能营销素材生成小程序。
+
+## 项目简介
+
+本项目提供一个对话式的营销素材生成工具，用户可以通过自然语言对话的方式描述需求，系统会自动收集需求、进行合规校验，并生成符合行业规范的营销素材图片。
+
+### 核心功能
+
+- **智能需求收集**：通过多轮对话逐步引导用户描述图片需求（主题、色调、风格、目标受众、使用场景等）
+- **参考图片上传**：支持用户上传参考图片，并说明希望借鉴的方面（风格、色调、构图、氛围）
+- **素材图片上传**：支持用户上传需要包含在图片中的素材图片，并指定放置位置
+- **合规校验**：自动检查生成的营销素材是否符合投资咨询行业合规要求（禁止收益承诺、夸大宣传等）
+- **AI 图片生成**：根据用户需求生成高质量的营销素材图片
+- **图片微调**：生成后支持根据用户反馈进行微调优化
+- **图片管理**：查看和管理所有已生成的营销素材图片
+
+### 使用流程
+
+```
+用户进入小程序
+    ↓
+微信授权登录（获取头像和昵称）
+    ↓
+开始对话描述需求（如："我需要一张产品介绍的海报"）
+    ↓
+系统引导收集详细需求（主题、色调、风格、受众、使用场景等）
+    ↓
+（可选）上传参考图片或素材图片
+    ↓
+需求收集完成后自动进行合规校验
+    ↓
+合规通过 → AI 生成图片 → 展示结果
+    ↓
+（可选）用户反馈微调需求 → 重新生成
+    ↓
+保存到图库，方便后续查看和使用
+```
+
+### 合规要素
+
+系统支持添加合规标语（如"市场有风险，投资需谨慎"、"本内容仅供参考，不构成投资建议"等），确保生成的营销素材符合监管要求。
 
 ## 技术栈
 
@@ -15,7 +55,7 @@
 - **包管理**: pnpm
 - **运行时**: Node.js >= 18
 - **服务端**: NestJS 10.4.15
-- **数据库 ORM**: Drizzle ORM 0.45.1
+- **数据库**: Supabase
 - **类型校验**: Zod 4.3.5
 
 ## 项目结构
@@ -31,10 +71,20 @@
 │   └── src/
 │       ├── main.ts           # 服务入口
 │       ├── app.module.ts     # 根模块
-│       ├── app.controller.ts # 应用控制器
-│       └── app.service.ts    # 应用服务
+│       ├── image/            # 图片生成模块
+│       │   ├── image.controller.ts  # 图片API控制器
+│       │   └── image.service.ts     # 图片生成服务（核心业务逻辑）
+│       ├── auth/             # 认证模块
+│       │   ├── auth.controller.ts   # 认证API控制器
+│       │   └── auth.service.ts      # 认证服务
+│       └── storage/          # 存储模块（数据库、文件上传）
 ├── src/                      # 前端源码
 │   ├── pages/                # 页面组件
+│   │   ├── index/            # 首页（对话式需求收集）
+│   │   ├── gallery/          # 图库页面（查看已生成图片）
+│   │   ├── adjust/           # 微调页面（图片参数调整）
+│   │   └── login/            # 登录页面（微信授权登录）
+│   ├── components/ui/        # UI组件库（shadcn/ui Taro版）
 │   ├── presets/              # 框架预置逻辑（无需读取，如无必要不改动）
 │   ├── utils/                # 工具函数
 │   ├── network.ts            # 封装好的网络请求工具
@@ -93,11 +143,11 @@ pnpm preview:weapp # 构建并生成预览小程序二维码
 
 ### 新建页面流程
 
-1. 在 \`src/pages/\` 下创建页面目录
-2. 创建 \`index.tsx\`（页面组件）
-3. 创建 \`index.config.ts\`（页面配置）
-4. 创建 \`index.css\`（页面样式，可选）
-5. 在 \`src/app.config.ts\` 的 \`pages\` 数组中注册页面路径
+1. 在 `src/pages/` 下创建页面目录
+2. 创建 `index.tsx`（页面组件）
+3. 创建 `index.config.ts`（页面配置）
+4. 创建 `index.css`（页面样式，可选）
+5. 在 `src/app.config.ts` 的 `pages` 数组中注册页面路径
 
 或使用 Taro 脚手架命令：
 
@@ -446,6 +496,7 @@ export default defineAppConfig({
     ],
   },
 })
+```
 
 ### Tailwind CSS 样式开发
 
@@ -553,8 +604,13 @@ async function getLocation(): Promise<Taro.getLocation.SuccessCallbackResult> {
 │   └── src/
 │       ├── main.ts           # 服务入口
 │       ├── app.module.ts     # 根模块
-│       ├── app.controller.ts # 根控制器
-│       └── app.service.ts    # 根服务
+│       ├── image/            # 图片生成模块
+│       │   ├── image.controller.ts  # 图片API控制器
+│       │   └── image.service.ts     # 图片生成服务（核心业务逻辑）
+│       ├── auth/             # 认证模块
+│       │   ├── auth.controller.ts   # 认证API控制器
+│       │   └── auth.service.ts      # 认证服务
+│       └── storage/          # 存储模块（数据库、文件上传）
 ```
 
 ### 开发命令
@@ -594,6 +650,14 @@ WX_APP_SECRET=你的AppSecret
 
 ## JWT 密钥
 JWT_SECRET=your-super-secret-key
+
+## Supabase 数据库配置
+COZE_SUPABASE_URL=你的Supabase URL
+COZE_SUPABASE_ANON_KEY=你的Supabase密钥
+
+## 对象存储配置（用于图片上传）
+COZE_BUCKET_ENDPOINT_URL=你的存储服务地址
+COZE_BUCKET_NAME=你的存储桶名称
 ```
 
 在代码中使用 @nestjs/config 读取环境变量：
@@ -712,9 +776,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
 app.useGlobalFilters(new HttpExceptionFilter());
 ```
 
-### 数据库 (Drizzle ORM)
+### 数据库 (Supabase)
 
-推荐使用 [Drizzle ORM](https://orm.drizzle.team/)，已预安装。
+项目使用 [Supabase](https://supabase.com/) 作为数据库，已集成 Supabase 客户端。
 
 ### 类型校验 (Zod)
 
