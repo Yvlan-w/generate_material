@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon, Home, Settings, RefreshCw, ImageOff } from 'lucide-react-taro';
+import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon, House, Settings, RefreshCw, ImageOff } from 'lucide-react-taro';
 import ImagePreview from '@/components/ImagePreview';
 import './index.css';
 
@@ -117,7 +117,7 @@ const IndexPage = () => {
           className="flex-1 flex flex-col items-center justify-center py-1"
           onClick={() => setCurrentTab('home')}
         >
-          <Home size={22} color={currentTab === 'home' ? '#1E40AF' : '#6B7280'} />
+          <House size={22} color={currentTab === 'home' ? '#1E40AF' : '#6B7280'} />
           <Text className="text-xs mt-1" style={{ color: currentTab === 'home' ? '#1E40AF' : '#6B7280' }}>首页</Text>
         </View>
         <View
