@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
 import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon } from 'lucide-react-taro';
 import CustomTabBar from '@/components/CustomTabBar';
+import ImagePreview from '@/components/ImagePreview';
 import './index.css';
 
 /**
@@ -94,6 +95,8 @@ const IndexPage = () => {
   
   const [imagesToSend, setImagesToSend] = useState<PendingImage[]>([]);
   const [scrollToId, setScrollToId] = useState<string>('');
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     // 检查登录状态
@@ -609,6 +612,10 @@ const IndexPage = () => {
                 maxHeight: '400px',
                 objectFit: 'contain'
               }}
+              onClick={() => {
+                setPreviewImage(message.data.imageUrl);
+                setShowPreview(true);
+              }}
             />
             {message.data.imageUrls && message.data.imageUrls.length > 1 && (
               <View style={{ 
@@ -1100,6 +1107,13 @@ const IndexPage = () => {
         
         {/* 自定义 TabBar */}
         <CustomTabBar />
+
+        {/* 图片预览组件 */}
+        <ImagePreview
+          imageUrl={previewImage}
+          visible={showPreview}
+          onClose={() => setShowPreview(false)}
+        />
       </View>
     </View>
   );

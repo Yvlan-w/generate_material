@@ -58,9 +58,10 @@ const CustomTabBar = () => {
 
   const handleTabClick = (tab: TabItem) => {
     if (currentPath === tab.pagePath) return
-    // 使用 switchTab 跳转到 tabBar 页面
-    Taro.switchTab({ url: tab.pagePath }).catch(err => {
-      console.error('TabBar 跳转失败:', err)
+    Taro.navigateTo({ url: tab.pagePath }).catch(() => {
+      Taro.redirectTo({ url: tab.pagePath }).catch(err => {
+        console.error('TabBar 跳转失败:', err)
+      })
     })
   }
 
