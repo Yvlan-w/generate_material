@@ -6,14 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon } from 'lucide-react-taro';
-import CustomTabBar from '@/components/CustomTabBar';
+import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon, Home, Settings, RefreshCw, ImageOff } from 'lucide-react-taro';
 import ImagePreview from '@/components/ImagePreview';
 import './index.css';
 
-/**
- * 消息类型定义
- */
+type TabType = 'home' | 'gallery' | 'adjust';
+
 interface Message {
   id: string;
   role: 'user' | 'agent' | 'system';
@@ -23,9 +21,6 @@ interface Message {
   data?: any;
 }
 
-/**
- * 根据当前对话阶段和用户最新消息，推断给用户的"处理中"提示
- */
 function getProcessingHint(
   stage: SessionState['stage'],
   latestUserMessage: string,
@@ -39,7 +34,6 @@ function getProcessingHint(
     violation: '正在分析您的修改意见...',
   };
 
-  // 如果当前在 collecting，且消息已经表达了完整意图，会自动进入生成流程
   if (stage === 'collecting') {
     const autoGenerateTrigger = /生成|开始|确认|就这样|出图|开始做/.test(msg);
     if (autoGenerateTrigger) {
@@ -51,9 +45,6 @@ function getProcessingHint(
   return stageLabelMap[stage] || '正在处理您的请求...';
 }
 
-/**
- * 对话状态定义
- */
 interface SessionState {
   sessionId: string;
   stage: 'collecting' | 'compliance-checking' | 'generating' | 'completed' | 'violation';
@@ -62,11 +53,95 @@ interface SessionState {
   generatedImage?: string;
 }
 
-/**
- * 首页 - 多轮对话式需求收集界面
- * 用户通过自然语言提问，Agent逐步引导收集需求
- */
+interface PendingImage {
+  id: string;
+  url: string;
+  localUrl?: string;
+  imageType?: 'reference' | 'included';
+  aspects?: string[];
+  position?: string;
+}
+
+interface GalleryImage {
+  id: string;
+  url: string;
+  status: string;
+  time: string;
+  needs?: any;
+}
+
+interface ParamConfig {
+  param_name: string;
+  param_value: number;
+  min_value: number;
+  max_value: number;
+  step: number;
+  description: string;
+}
+
 const IndexPage = () => {
+  const [currentTab, setCurrentTab] = useState<TabType>('home');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const adminFlag = Taro.getStorageSync('isAdmin');
+    setIsAdmin(adminFlag === true);
+
+    const isLoggedIn = Taro.getStorageSync('isLoggedIn');
+    if (!isLoggedIn) {
+      Taro.redirectTo({ url: '/pages/login/index' });
+      return;
+    }
+
+    const pages = Taro.getCurrentPages();
+    if (pages.length > 0) {
+      const currentPage = pages[pages.length - 1];
+      const options = (currentPage as any).options || {};
+      if (options.tab && (options.tab === 'gallery' || options.tab === 'adjust')) {
+        setCurrentTab(options.tab as TabType);
+      }
+    }
+  }, []);
+
+  return (
+    <View className="min-h-screen bg-gray-50">
+      {currentTab === 'home' && <HomePage />}
+      {currentTab === 'gallery' && <GalleryPage />}
+      {currentTab === 'adjust' && isAdmin && <AdjustPage />}
+
+      <View
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-14 z-50 pb-safe"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <View
+          className="flex-1 flex flex-col items-center justify-center py-1"
+          onClick={() => setCurrentTab('home')}
+        >
+          <Home size={22} color={currentTab === 'home' ? '#1E40AF' : '#6B7280'} />
+          <Text className="text-xs mt-1" style={{ color: currentTab === 'home' ? '#1E40AF' : '#6B7280' }}>首页</Text>
+        </View>
+        <View
+          className="flex-1 flex flex-col items-center justify-center py-1"
+          onClick={() => setCurrentTab('gallery')}
+        >
+          <ImageIcon size={22} color={currentTab === 'gallery' ? '#1E40AF' : '#6B7280'} />
+          <Text className="text-xs mt-1" style={{ color: currentTab === 'gallery' ? '#1E40AF' : '#6B7280' }}>图库</Text>
+        </View>
+        {isAdmin && (
+          <View
+            className="flex-1 flex flex-col items-center justify-center py-1"
+            onClick={() => setCurrentTab('adjust')}
+          >
+            <Settings size={22} color={currentTab === 'adjust' ? '#1E40AF' : '#6B7280'} />
+            <Text className="text-xs mt-1" style={{ color: currentTab === 'adjust' ? '#1E40AF' : '#6B7280' }}>配置</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const HomePage = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'init',
@@ -76,36 +151,20 @@ const IndexPage = () => {
       type: 'text'
     }
   ]);
-  
+
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessionState, setSessionState] = useState<SessionState>({
     sessionId: `session_${Date.now()}`,
     stage: 'collecting'
   });
-  
-  interface PendingImage {
-    id: string;
-    url: string;
-    localUrl?: string;
-    imageType?: 'reference' | 'included';
-    aspects?: string[];
-    position?: string;
-  }
-  
+
   const [imagesToSend, setImagesToSend] = useState<PendingImage[]>([]);
   const [scrollToId, setScrollToId] = useState<string>('');
   const [previewImage, setPreviewImage] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
-    // 检查登录状态
-    const isLoggedIn = Taro.getStorageSync('isLoggedIn');
-    if (!isLoggedIn) {
-      Taro.redirectTo({ url: '/pages/login/index' });
-      return;
-    }
-    
     if (scrollToId) {
       const timer = setTimeout(() => {
         setScrollToId('');
@@ -114,10 +173,9 @@ const IndexPage = () => {
     }
   }, [scrollToId]);
 
-  // 发送消息
   const handleSendMessage = async () => {
     if (!inputValue.trim() && imagesToSend.length === 0 || isProcessing) return;
-    
+
     const userMessage: Message = {
       id: `msg_${Date.now()}`,
       role: 'user',
@@ -130,89 +188,59 @@ const IndexPage = () => {
         imageDetails: imagesToSend
       } : undefined
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsProcessing(true);
     setScrollToId(userMessage.id);
 
-    // 根据当前阶段给出不同的"处理中"提示，让用户感知到后台在做什么
     const processingHint = getProcessingHint(sessionState.stage, userMessage.content);
     if (processingHint) {
-      const tempMessage: Message = {
+      const thinkingMessage: Message = {
         id: `msg_${Date.now()}_thinking`,
-        role: 'agent',
+        role: 'system',
         content: processingHint,
         timestamp: new Date(),
-        type: 'thinking',
+        type: 'thinking'
       };
-      setMessages(prev => [...prev, tempMessage]);
+      setMessages(prev => [...prev, thinkingMessage]);
     }
-    
+
     try {
-      const userInfo = Taro.getStorageSync('userInfo') || {};
-      
+      const userId = Taro.getStorageSync('userId');
       const requestData: Record<string, any> = {
         sessionId: sessionState.sessionId,
         message: userMessage.content,
-        stage: sessionState.stage,
-        userId: userInfo.id
+        userId
       };
-      
+
       if (imagesToSend.length > 0) {
         const referenceImages = imagesToSend.filter(img => img.imageType === 'reference');
         const includedElements = imagesToSend.filter(img => img.imageType === 'included');
-        
-        if (referenceImages.length > 0 && includedElements.length > 0) {
+
+        if (referenceImages.length > 0) {
           requestData.referenceImages = referenceImages.map(img => ({
             url: img.url,
-            aspects: img.aspects
+            aspects: img.aspects || []
           }));
+        }
+
+        if (includedElements.length > 0) {
           requestData.includedImages = includedElements.map(img => ({
             url: img.url,
-            position: img.position
-          }));
-          requestData.imageUrls = imagesToSend.map(img => img.url);
-        } else if (referenceImages.length > 0) {
-          requestData.imageType = 'reference';
-          requestData.imageUrls = referenceImages.map(img => img.url);
-          requestData.imageDetails = referenceImages.map(img => ({
-            url: img.url,
-            aspects: img.aspects
-          }));
-        } else if (includedElements.length > 0) {
-          requestData.imageType = 'included';
-          requestData.imageUrls = includedElements.map(img => img.url);
-          requestData.imageDetails = includedElements.map(img => ({
-            url: img.url,
-            position: img.position
+            position: img.position || ''
           }));
         }
       }
-      
-      console.log('调用对话API:', {
-        url: '/api/image/chat',
-        method: 'POST',
-        data: requestData
-      });
-      
+
       const response = await Network.request({
         url: '/api/image/chat',
         method: 'POST',
         data: requestData
       });
-      
-      console.log('对话API响应:', response.data);
-      
+
       const { code, msg, data } = response.data;
-      
-      console.log('[DEBUG] API response code:', code);
-      console.log('[DEBUG] API response data:', JSON.stringify(data, null, 2));
-      console.log('[DEBUG] Has reply:', !!data.reply);
-      console.log('[DEBUG] Has generatedImage:', !!data.generatedImage);
-      console.log('[DEBUG] Stage:', data.stage);
-      console.log('[DEBUG] Type:', data.type);
-      
+
       if (code === 200) {
         setSessionState(prev => ({
           ...prev,
@@ -223,7 +251,6 @@ const IndexPage = () => {
         }));
         setImagesToSend([]);
 
-        // 移除之前添加的 thinking 占位消息（用真实的 reply / image 替换它的位置）
         setMessages(prev => prev.filter((m) => m.type !== 'thinking'));
 
         if (data.reply) {
@@ -238,7 +265,7 @@ const IndexPage = () => {
           setMessages(prev => [...prev, agentMessage]);
           setScrollToId(agentMessage.id);
         }
-        
+
         if (data.stage === 'violation' && data.complianceResult) {
           const warningMessage: Message = {
             id: `msg_${Date.now()}_warning`,
@@ -251,7 +278,7 @@ const IndexPage = () => {
           setMessages(prev => [...prev, warningMessage]);
           setScrollToId(warningMessage.id);
         }
-        
+
         if (data.stage === 'generating' && data.complianceResult?.passed) {
           const complianceMessage: Message = {
             id: `msg_${Date.now()}_compliance`,
@@ -263,7 +290,7 @@ const IndexPage = () => {
           setMessages(prev => [...prev, complianceMessage]);
           setScrollToId(complianceMessage.id);
         }
-        
+
         if (data.stage === 'completed' && data.generatedImage && !data.reply) {
           const imageMessage: Message = {
             id: `msg_${Date.now()}_image`,
@@ -307,143 +334,21 @@ const IndexPage = () => {
     }
   };
 
-  // 图片上传处理
-  const handleImageUpload = async () => {
-    try {
-      const userInfo = Taro.getStorageSync('userInfo') || {};
-      const isWeapp = Taro.getEnv() === Taro.ENV_TYPE.WEAPP;
-
-      Taro.chooseImage({
-        count: 9,
-        sizeType: ['compressed'],
-        sourceType: ['album', 'camera'],
-        success: async (res) => {
-          const tempFilePaths = res.tempFilePaths;
-          if (tempFilePaths.length === 0) return;
-
-          setIsProcessing(true);
-
-          try {
-            let uploadedUrls: string[] = [];
-
-            if (isWeapp) {
-              // 小程序端：使用 Network.uploadFile
-              const uploadPromises = tempFilePaths.map((filePath) => {
-                return Network.uploadFile({
-                  url: '/api/image/upload',
-                  filePath,
-                  name: 'image',
-                  formData: {
-                    userId: userInfo.id || ''
-                  }
-                });
-              });
-
-              const results = await Promise.all(uploadPromises);
-              uploadedUrls = results
-                .filter(r => r.data && JSON.parse(r.data).code === 200)
-                .map(r => JSON.parse(r.data).data.url);
-            } else {
-              // H5端：使用原生 fetch + FormData，绕过 Taro uploadFile（Coze SW 拦截问题）
-              const tempFiles = (res as any).tempFiles as File[] || [];
-              if (tempFiles.length === 0) {
-                throw new Error('未获取到文件对象');
-              }
-
-              // H5 端使用相对路径，Vite proxy 会自动代理到后端
-              const uploadUrl = '/api/image/upload';
-              const uploadPromises = tempFiles.map((file) => {
-                const formData = new FormData();
-                formData.append('image', file);
-                formData.append('userId', userInfo.id || '');
-
-                return fetch(uploadUrl, {
-                  method: 'POST',
-                  body: formData
-                }).then(resp => resp.json());
-              });
-
-              const results = await Promise.all(uploadPromises);
-              uploadedUrls = results
-                .filter(r => r && r.code === 200)
-                .map(r => r.data.url);
-            }
-
-            if (uploadedUrls.length > 0) {
-              Taro.showActionSheet({
-                itemList: ['作为参考图片', '作为包含元素'],
-                success: (actionRes) => {
-                  const imageType = actionRes.tapIndex === 0 ? 'reference' : 'included';
-                  handleAddPendingImages(uploadedUrls, tempFilePaths, imageType, 0, []);
-                },
-                fail: () => {
-                  setIsProcessing(false);
-                }
-              });
-            } else {
-              Taro.showToast({ title: '图片上传失败', icon: 'error' });
-              setIsProcessing(false);
-            }
-          } catch (uploadError) {
-            console.error('上传失败:', uploadError);
-            Taro.showToast({ title: '图片上传失败', icon: 'error' });
-            setIsProcessing(false);
-          }
-        },
-        fail: () => {
-          setIsProcessing(false);
-        }
-      });
-    } catch (error) {
-      console.error('图片上传失败:', error);
-      setIsProcessing(false);
-    }
-  };
-
-  const handleAddPendingImages = (urls: string[], localUrls: string[], imageType: 'reference' | 'included', index: number, results: PendingImage[]) => {
-    if (index >= urls.length) {
-      setImagesToSend(prev => [...prev, ...results]);
-      setIsProcessing(false);
-      return;
-    }
-    
-    const currentUrl = urls[index];
-    const currentLocalUrl = localUrls[index];
-    
-    Taro.showModal({
-      title: imageType === 'reference' 
-        ? `参考图片 ${index + 1}/${urls.length}` 
-        : `素材图片 ${index + 1}/${urls.length}`,
-      editable: true as any,
-      placeholderText: imageType === 'reference' 
-        ? '请输入想在哪些方面借鉴这张参考图片（如：风格、色调、构图）' 
-        : '请输入这张素材图片希望被放置的位置（如：左上角、底部居中、背景）',
-      confirmText: index === urls.length - 1 ? '完成' : '下一张',
-      cancelText: '跳过',
-      success: (modalRes: any) => {
-        const value = modalRes.content ? modalRes.content.trim() : '';
-        const newImage: PendingImage = {
+  const handleImageUpload = () => {
+    Taro.chooseImage({
+      count: 9,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        const newImages: PendingImage[] = res.tempFilePaths.map((path, index) => ({
           id: `img_${Date.now()}_${index}`,
-          url: currentUrl,
-          localUrl: currentLocalUrl,
-          imageType,
-          aspects: imageType === 'reference' ? (value ? value.split(/[,，、\s]+/).filter((s: string) => s.trim()) : []) : undefined,
-          position: imageType === 'included' ? value : undefined
-        };
-        results.push(newImage);
-        handleAddPendingImages(urls, localUrls, imageType, index + 1, results);
-      },
-      fail: () => {
-        const newImage: PendingImage = {
-          id: `img_${Date.now()}_${index}`,
-          url: currentUrl,
-          localUrl: currentLocalUrl,
-          imageType
-        };
-        results.push(newImage);
-        handleAddPendingImages(urls, localUrls, imageType, index + 1, results);
+          url: path,
+          imageType: 'included' as const,
+          position: ''
+        }));
+        setImagesToSend(prev => [...prev, ...newImages]);
       }
-    } as any);
+    });
   };
 
   const removePendingImage = (id: string) => {
@@ -454,160 +359,79 @@ const IndexPage = () => {
     setImagesToSend([]);
   };
 
-  const handleReset = () => {
-    setMessages([
-      {
-        id: 'init',
-        role: 'agent',
-        content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？',
-        timestamp: new Date(),
-        type: 'text'
-      }
-    ]);
-    setSessionState({
-      sessionId: `session_${Date.now()}`,
-      stage: 'collecting'
-    });
-  };
-
-  // 获取阶段状态Badge
-  const getStageBadge = () => {
-    const stageConfig = {
-      collecting: { text: '需求收集', bg: '#E0F2FE', color: '#0369A1' },
-      'compliance-checking': { text: '合规校验', bg: '#FEF3C7', color: '#B45309' },
-      generating: { text: '图片生成', bg: '#DBEAFE', color: '#1E40AF' },
-      completed: { text: '已完成', bg: '#D1FAE5', color: '#047857' },
-      violation: { text: '需要优化', bg: '#FEE2E2', color: '#B91C1C' }
-    };
-    
-    const config = stageConfig[sessionState.stage];
-    return (
-      <View style={{
-        backgroundColor: config.bg,
-        color: config.color,
-        borderRadius: '12px',
-        paddingLeft: '12px',
-          paddingRight: '12px',
-        paddingTop: '4px',
-          paddingBottom: '4px',
-        marginLeft: '8px'
-      }}
-      >
-        <Text style={{ fontSize: '12px', color: config.color, fontWeight: '500' }}>
-          {config.text}
-        </Text>
-      </View>
-    );
-  };
-
-  // 渲染消息内容
   const renderMessage = (message: Message) => {
+    const isUser = message.role === 'user';
+
     if (message.type === 'thinking') {
       return (
-        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-          <LoaderCircle size={14} color="#64748B" className="animate-spin" />
-          <Text style={{ fontSize: '14px', color: '#475569', marginLeft: '6px' }}>
-            {message.content}
-          </Text>
-        </View>
+        <Card key={message.id} style={{
+          marginTop: '12px',
+          borderRadius: '16px',
+          border: 'none',
+          backgroundColor: '#F8FAFC'
+        }}>
+          <CardContent style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
+            <LoaderCircle size={16} color="#64748B" className="mr-2" style={{ animation: 'spin 1s linear infinite' }} />
+            <Text className="text-sm text-gray-500">{message.content}</Text>
+          </CardContent>
+        </Card>
       );
     }
 
-    if (message.type === 'image' && message.data?.imageUrls && message.role === 'user') {
+    if (message.type === 'compliance-result') {
       return (
-        <Card style={{
+        <Card key={message.id} style={{
           marginTop: '12px',
           borderRadius: '16px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           border: 'none',
-          backgroundColor: '#EFF6FF'
-        }}
-        >
-          <CardContent style={{ padding: '12px' }}>
-            {message.content && (
-              <Text className="block text-sm whitespace-pre-wrap mb-3" style={{ lineHeight: '1.6' }}>
-                {message.content}
-              </Text>
-            )}
-            <View style={{ 
-              display: 'flex', 
-              flexDirection: 'row', 
-              flexWrap: 'wrap', 
-              gap: '8px',
-              marginTop: '8px'
-            }}>
-              {message.data.imageUrls.map((url: string, index: number) => {
-                const detail = message.data.imageDetails?.[index];
-                const imageType = detail?.imageType || (detail?.aspects ? 'reference' : 'included');
-                return (
-                  <View key={index} style={{ 
-                    width: index === 0 ? '100%' : '60px',
-                    position: 'relative'
-                  }}>
-                    <Image
-                      src={url}
-                      style={{
-                        width: index === 0 ? '100%' : '60px',
-                        height: index === 0 ? 'auto' : '60px',
-                        borderRadius: index === 0 ? '12px' : '8px',
-                        objectFit: index === 0 ? 'contain' : 'cover',
-                        maxHeight: index === 0 ? '200px' : '60px'
-                      }}
-                      mode={index === 0 ? 'widthFix' : 'aspectFill'}
-                    />
-                    <View style={{
-                      position: 'absolute',
-                      top: '4px',
-                      left: '4px',
-                      backgroundColor: 'rgba(0,0,0,0.6)',
-                      borderRadius: '4px',
-                      paddingLeft: '4px',
-                      paddingRight: '4px',
-                      paddingTop: '1px',
-                      paddingBottom: '1px'
-                    }}>
-                      <Text className="block text-xs text-white">
-                        {imageType === 'reference' ? '参考' : '素材'}
-                      </Text>
-                    </View>
-                    {detail && ((detail.aspects && detail.aspects.length > 0) || detail.position) && (
-                      <View style={{ marginTop: index === 0 ? '4px' : '2px', padding: '2px 4px', backgroundColor: imageType === 'reference' ? '#F0FDF4' : '#FEFCE8', borderRadius: '4px' }}>
-                        <Text className="block text-[10px] text-green-700">
-                          {detail.aspects?.length ? detail.aspects.join('、') : detail.position}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
+          backgroundColor: '#ECFDF5'
+        }}>
+          <CardContent style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
+            <Check size={16} color="#059669" className="mr-2" />
+            <Text className="text-sm text-green-700">{message.content}</Text>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (message.type === 'violation-warning') {
+      return (
+        <Card key={message.id} style={{
+          marginTop: '12px',
+          borderRadius: '16px',
+          border: '1px solid #FCA5A5',
+          backgroundColor: '#FEF2F2'
+        }}>
+          <CardContent style={{ padding: '12px 16px' }}>
+            <View style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '8px' }}>
+              <TriangleAlert size={16} color="#DC2626" className="mr-2 flex-shrink-0" />
+              <Text className="text-sm text-red-700">{message.content}</Text>
             </View>
           </CardContent>
         </Card>
       );
     }
-    
+
     if (message.type === 'image' && message.data?.imageUrl) {
-      const isUserImage = message.role === 'user';
       return (
-        <Card style={{
+        <Card key={message.id} style={{
           marginTop: '12px',
-          borderRadius: isUserImage ? '16px' : '16px',
+          borderRadius: '16px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           border: 'none',
-          backgroundColor: isUserImage ? '#EFF6FF' : '#FFFFFF'
-        }}
-        >
+          backgroundColor: isUser ? '#EFF6FF' : '#FFFFFF'
+        }}>
           <CardContent style={{ padding: '12px' }}>
-            {isUserImage && message.content && (
+            {isUser && message.content && (
               <Text className="block text-sm whitespace-pre-wrap mb-3" style={{ lineHeight: '1.6' }}>
                 {message.content}
               </Text>
             )}
-            <Image 
+            <Image
               src={message.data.imageUrl}
               className="w-full rounded-lg"
               mode="widthFix"
-              style={{ 
+              style={{
                 borderRadius: '12px',
                 maxHeight: '400px',
                 objectFit: 'contain'
@@ -618,10 +442,10 @@ const IndexPage = () => {
               }}
             />
             {message.data.imageUrls && message.data.imageUrls.length > 1 && (
-              <View style={{ 
-                display: 'flex', 
-                flexDirection: 'row', 
-                flexWrap: 'wrap', 
+              <View style={{
+                display: 'flex',
+                flexDirection: 'row',
+                flexWrap: 'wrap',
                 gap: '8px',
                 marginTop: '8px'
               }}>
@@ -651,273 +475,45 @@ const IndexPage = () => {
                 })}
               </View>
             )}
-            {message.data.imageType && (
-              <View style={{ 
-                marginTop: '8px',
-                padding: '6px 12px',
-                backgroundColor: isUserImage ? '#DBEAFE' : '#F1F5F9',
-                borderRadius: '20px',
-                alignSelf: 'flex-start'
-              }}>
-                <Text className="block text-xs font-medium text-blue-700">
-                  {message.data.imageType === 'reference' ? '参考图片' : '素材图片'}
-                </Text>
-              </View>
-            )}
-            {message.data.imageType === 'reference' && message.data.aspects && message.data.aspects.length > 0 && (
-              <View style={{ 
-                marginTop: '8px',
-                padding: '8px 12px',
-                backgroundColor: '#F0FDF4',
-                borderRadius: '8px',
-                alignSelf: 'flex-start'
-              }}>
-                <Text className="block text-xs font-medium text-green-700">
-                  借鉴方面：{message.data.aspects.join('、')}
-                </Text>
-              </View>
-            )}
-            {message.data.imageType === 'included' && message.data.position && (
-              <View style={{ 
-                marginTop: '8px',
-                padding: '8px 12px',
-                backgroundColor: '#FEFCE8',
-                borderRadius: '8px',
-                alignSelf: 'flex-start'
-              }}>
-                <Text className="block text-xs font-medium text-amber-700">
-                  使用位置：{message.data.position}
-                </Text>
-              </View>
-            )}
-            {!isUserImage && message.data?.needs && (
-              <View style={{ marginTop: '16px' }}>
-                <Text className="block text-sm font-semibold text-gray-700">
-                  需求摘要：
-                </Text>
-                <Text className="block text-sm text-gray-600 mt-2">
-                  {message.data.needs.summary}
-                </Text>
-              </View>
-            )}
-            {!isUserImage && message.data?.disclaimer && (
-              <View style={{
-                marginTop: '12px',
-                padding: '12px',
-                backgroundColor: '#F8FAFC',
-                borderRadius: '8px'
-              }}
-              >
-                <Text className="block text-xs text-gray-500">
-                  {message.data.disclaimer}
-                </Text>
-              </View>
+            {message.data.disclaimer && (
+              <Text className="block text-xs text-gray-400 mt-3" style={{ textAlign: 'center' }}>
+                {message.data.disclaimer}
+              </Text>
             )}
           </CardContent>
         </Card>
       );
     }
-    
-    if (message.type === 'image' && !message.data?.imageUrl) {
-      return null;
-    }
-    
-    if (message.type === 'violation-warning') {
-      return (
-        <View style={{
-          marginTop: '12px',
-          backgroundColor: '#FEF2F2',
-          borderRadius: '16px',
-          padding: '16px',
-          border: '1px solid #FECACA'
-        }}
-        >
-          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '8px' }}>
-            <TriangleAlert size={18} color="#DC2626" style={{ marginRight: '8px' }} />
-            <Text className="block text-sm font-semibold text-red-700">
-              合规校验未通过
-            </Text>
-          </View>
-          {message.data?.violationAspects && (
-            <Text className="block text-sm text-red-600 mt-2">
-              违规方面：{message.data.violationAspects}
-            </Text>
-          )}
-          {message.data?.suggestions && (
-            <Text className="block text-sm text-red-600 mt-2">
-              改进建议：{message.data.suggestions}
-            </Text>
-          )}
-        </View>
-      );
-    }
-    
-    if (message.type === 'compliance-result') {
-      return (
-        <View style={{
-          marginTop: '12px',
-          backgroundColor: '#F0FDF4',
-          borderRadius: '16px',
-          padding: '16px',
-          border: '1px solid #BBF7D0'
-        }}
-        >
-          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-            <Check size={18} color="#16A34A" style={{ marginRight: '8px' }} />
-            <Text className="block text-sm font-semibold text-green-700">
-              合规校验通过
-            </Text>
-          </View>
-        </View>
-      );
-    }
-    
+
     return (
-      <Text className="block text-sm whitespace-pre-wrap" style={{ lineHeight: '1.6' }}>
-        {message.content}
-      </Text>
+      <Card key={message.id} style={{
+        marginTop: '12px',
+        borderRadius: isUser ? '16px' : '16px',
+        border: 'none',
+        backgroundColor: isUser ? '#EFF6FF' : '#FFFFFF'
+      }}>
+        <CardContent style={{ padding: '12px 16px' }}>
+          <Text className="text-sm whitespace-pre-wrap" style={{ lineHeight: '1.6' }}>
+            {message.content}
+          </Text>
+        </CardContent>
+      </Card>
     );
   };
 
   return (
-    <View style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      backgroundColor: '#F8FAFC'
-    }}
-    >
-      {/* 顶部状态栏 */}
-      <View style={{
-        position: 'sticky',
-        top: 0,
-        backgroundColor: '#FFFFFF',
-        borderBottom: '1px solid #E2E8F0',
-        paddingLeft: '16px',
-          paddingRight: '16px',
-        paddingTop: '12px',
-          paddingBottom: '12px',
-        zIndex: 10,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-      }}
-      >
-        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-            <Sparkles size={20} color="#3B82F6" style={{ marginRight: '8px' }} />
-            <Text style={{ fontSize: '18px', fontWeight: '600', color: '#1E293B' }}>
-              营销素材生成
-            </Text>
-            {getStageBadge()}
-          </View>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleReset}
-            style={{
-              borderRadius: '12px',
-              backgroundColor: '#F1F5F9'
-            }}
-          >
-            <Text style={{ fontSize: '12px', color: '#64748B' }}>重新开始</Text>
-          </Button>
+    <View className="min-h-screen bg-gray-50 pb-20">
+      <ScrollArea scrollTop={0} style={{ height: 'calc(100vh - 80px)' }}>
+        <View style={{ padding: '16px' }}>
+          {messages.map(renderMessage)}
         </View>
-      </View>
-
-      {/* 对话历史区域 */}
-      <ScrollArea style={{ 
-        flex: 1, 
-        paddingLeft: '16px',
-          paddingRight: '16px', 
-        paddingTop: '16px',
-          paddingBottom: '160px'
-      }}
-      scrollIntoView={scrollToId}
-      >
-        {messages.map((message) => (
-          <View 
-            key={message.id}
-            id={message.id}
-            style={{
-              display: 'flex',
-              marginBottom: '16px',
-              justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start'
-            }}
-          >
-            <View 
-              style={{
-                display: 'flex',
-                maxWidth: '85%',
-                flexDirection: message.role === 'user' ? 'row-reverse' : 'row'
-              }}
-            >
-              {/* 角色图标 */}
-              <View 
-                style={{
-                  flexShrink: 0,
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: message.role === 'user' ? '#DBEAFE' : '#F1F5F9',
-                  marginLeft: message.role === 'user' ? '8px' : '0',
-                  marginRight: message.role === 'user' ? '0' : '8px'
-                }}
-              >
-                {message.role === 'user' 
-                  ? <User size={18} color="#3B82F6" /> 
-                  : <Bot size={18} color="#64748B" />
-                }
-              </View>
-              
-              {/* 消息内容 */}
-              <View 
-                style={{
-                  borderRadius: '16px',
-                  padding: '12px 16px',
-                  backgroundColor: message.role === 'user'
-                    ? '#DBEAFE'
-                    : '#FFFFFF',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                  border: message.role === 'user' ? 'none' : '1px solid #E2E8F0'
-                }}
-              >
-                {renderMessage(message)}
-              </View>
-            </View>
-          </View>
-        ))}
-        
-        {/* 处理中状态（已通过 thinking 消息展示，此处保留兜底 loading） */}
-        {isProcessing && !messages.some((m) => m.type === 'thinking') && (
-          <View style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
-            <View style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: '#FFFFFF',
-              borderRadius: '16px',
-              padding: '12px 16px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-              border: '1px solid #E2E8F0'
-            }}
-            >
-              <LoaderCircle size={18} color="#64748B" style={{ marginRight: '8px' }} className="animate-spin" />
-              <Text style={{ fontSize: '14px', color: '#64748B' }}>
-                正在处理您的请求...
-              </Text>
-            </View>
-          </View>
-        )}
       </ScrollArea>
 
-      {/* 待发送图片缩略图列表 */}
       {imagesToSend.length > 0 && (
-        <View 
+        <View
           style={{
             position: 'fixed',
-            bottom: 120,
+            bottom: 70,
             left: 0,
             right: 0,
             zIndex: 400,
@@ -941,8 +537,8 @@ const IndexPage = () => {
           <ScrollArea orientation="horizontal" style={{ flex: 0, maxHeight: '100px' }}>
             <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', paddingRight: '16px' }}>
               {imagesToSend.map((img) => (
-                <View 
-                  key={img.id} 
+                <View
+                  key={img.id}
                   style={{
                     position: 'relative',
                     width: '80px',
@@ -952,48 +548,12 @@ const IndexPage = () => {
                     border: '1px solid #E2E8F0'
                   }}
                 >
-                  <Image 
-                    src={img.localUrl || img.url} 
+                  <Image
+                    src={img.url}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     mode="aspectFill"
-                    style={{ width: '100%', height: '100%' }}
                   />
-                  <View 
-                    style={{
-                      position: 'absolute',
-                      top: '4px',
-                      left: '4px',
-                      backgroundColor: 'rgba(0,0,0,0.6)',
-                      borderRadius: '4px',
-                      paddingLeft: '4px',
-                      paddingRight: '4px',
-                      paddingTop: '1px',
-                      paddingBottom: '1px'
-                    }}
-                  >
-                    <Text className="block text-xs text-white">
-                      {img.imageType === 'reference' ? '参考' : '素材'}
-                    </Text>
-                  </View>
-                  {(img.aspects?.length || img.position) && (
-                    <View 
-                      style={{
-                        position: 'absolute',
-                        bottom: '0',
-                        left: '0',
-                        right: '0',
-                        backgroundColor: 'rgba(0,0,0,0.6)',
-                        paddingLeft: '4px',
-                        paddingRight: '4px',
-                        paddingTop: '2px',
-                        paddingBottom: '2px'
-                      }}
-                    >
-                      <Text className="block text-xs text-white truncate">
-                        {img.aspects?.join('、') || img.position}
-                      </Text>
-                    </View>
-                  )}
-                  <View 
+                  <View
                     style={{
                       position: 'absolute',
                       top: '-4px',
@@ -1017,31 +577,20 @@ const IndexPage = () => {
         </View>
       )}
 
-      {/* 底部固定区域：输入框 + TabBar */}
-      <View 
+      <View
         style={{
           position: 'fixed',
-          bottom: 0,
+          bottom: 50,
           left: 0,
           right: 0,
-          zIndex: 500
+          padding: '16px',
+          backgroundColor: '#FFFFFF',
+          borderTop: '1px solid #E2E8F0',
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
         }}
       >
-        {/* 输入区域 */}
-        <View 
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: '12px',
-            padding: '16px',
-            paddingBottom: '72px',
-            backgroundColor: '#FFFFFF',
-            borderTop: '1px solid #E2E8F0',
-            boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
-          }}
-        >
-          <View 
+        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+          <View
             style={{
               flex: 1,
               backgroundColor: '#F1F5F9',
@@ -1052,13 +601,13 @@ const IndexPage = () => {
             }}
           >
             <Input
-              style={{ 
-                width: '100%', 
+              style={{
+                width: '100%',
                 fontSize: '16px',
                 backgroundColor: 'transparent'
               }}
-              placeholder={sessionState.stage === 'violation' 
-                ? '请根据建议优化您的需求...' 
+              placeholder={sessionState.stage === 'violation'
+                ? '请根据建议优化您的需求...'
                 : '请描述您的图片需求...'}
               value={inputValue}
               onInput={(e) => setInputValue(e.detail.value)}
@@ -1088,8 +637,9 @@ const IndexPage = () => {
             </Button>
             <Button
               size="default"
+              variant="default"
               onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isProcessing}
+              disabled={isProcessing || !inputValue.trim() && imagesToSend.length === 0}
               style={{
                 borderRadius: '24px',
                 paddingLeft: '24px',
@@ -1104,17 +654,493 @@ const IndexPage = () => {
             </Button>
           </View>
         </View>
-        
-        {/* 自定义 TabBar */}
-        <CustomTabBar />
-
-        {/* 图片预览组件 */}
-        <ImagePreview
-          imageUrl={previewImage}
-          visible={showPreview}
-          onClose={() => setShowPreview(false)}
-        />
       </View>
+
+      <ImagePreview
+        imageUrl={previewImage}
+        visible={showPreview}
+        onClose={() => setShowPreview(false)}
+      />
+    </View>
+  );
+};
+
+const GalleryPage = () => {
+  const [images, setImages] = useState<GalleryImage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [showPreview, setShowPreview] = useState(false);
+
+  useEffect(() => {
+    loadImages();
+  }, []);
+
+  const loadImages = async () => {
+    setLoading(true);
+    try {
+      const userId = Taro.getStorageSync('userId');
+      const response = await Network.request({
+        url: '/api/image/list',
+        method: 'GET',
+        data: { userId }
+      });
+
+      if (response.data.code === 200) {
+        const imageList = response.data.data || [];
+        setImages(imageList.map((img: any) => ({
+          id: img.id,
+          url: img.image_url,
+          status: img.status || '合规通过',
+          time: img.created_at ? formatTime(img.created_at) : '',
+          needs: img.needs
+        })));
+      }
+    } catch (error) {
+      console.error('获取图片列表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days === 0) {
+      return `${Math.floor(diff / (1000 * 60 * 60))}小时前`;
+    } else if (days === 1) {
+      return '昨天';
+    } else if (days < 7) {
+      return `${days}天前`;
+    } else {
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    }
+  };
+
+  const handleImageClick = (id: string, url: string) => {
+    setPreviewImage(url);
+    setShowPreview(true);
+  };
+
+  const handleImageError = (id: string) => {
+    setFailedImages(prev => new Set([...prev, id]));
+  };
+
+  return (
+    <View className="min-h-screen bg-gray-50 pb-20">
+      <ScrollArea style={{ height: 'calc(100vh - 80px)' }}>
+        <View style={{ padding: '16px' }}>
+          {images.length === 0 && !loading ? (
+            <View style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingTop: '100px'
+            }}>
+              <ImageOff size={48} color="#CBD5E1" />
+              <Text style={{
+                fontSize: '16px',
+                color: '#64748B',
+                marginTop: '16px'
+              }}>
+                暂无图片
+              </Text>
+              <Text style={{
+                fontSize: '14px',
+                color: '#94A3B8',
+                marginTop: '8px'
+              }}>
+                去首页生成您的第一张营销素材吧！
+              </Text>
+            </View>
+          ) : (
+            <View style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '12px'
+            }}>
+              {images.map((image) => (
+                <View
+                  key={image.id}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                    border: '1px solid #E2E8F0'
+                  }}
+                  onClick={() => handleImageClick(image.id, image.url)}
+                >
+                  <View style={{
+                    aspectRatio: '1',
+                    backgroundColor: '#F1F5F9',
+                    position: 'relative'
+                  }}>
+                    {failedImages.has(image.id) ? (
+                      <View style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <ImageOff size={24} color="#94A3B8" />
+                      </View>
+                    ) : (
+                      <Image
+                        src={image.url}
+                        mode="aspectFill"
+                        style={{ width: '100%', height: '100%' }}
+                        onError={() => handleImageError(image.id)}
+                      />
+                    )}
+                  </View>
+                  <View style={{ padding: '12px' }}>
+                    <View style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingBottom: '4px'
+                    }}>
+                      <Text style={{
+                        fontSize: '12px',
+                        color: image.status === '合规通过' ? '#047857' : '#B45309',
+                        fontWeight: '500'
+                      }}>
+                        {image.status}
+                      </Text>
+                    </View>
+                    <Text style={{
+                      fontSize: '12px',
+                      color: '#94A3B8'
+                    }}>
+                      {image.time}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {images.length > 0 && (
+          <View style={{
+            paddingLeft: '20px',
+            paddingRight: '20px',
+            paddingTop: '16px',
+            paddingBottom: '20px'
+          }}>
+            <Button
+              style={{
+                width: '100%',
+                backgroundColor: '#F1F5F9',
+                borderRadius: '12px',
+                height: '44px'
+              }}
+              onClick={loadImages}
+            >
+              <RefreshCw size={16} color="#64748B" style={{ marginRight: '8px' }} />
+              <Text style={{ fontSize: '14px', color: '#64748B' }}>刷新列表</Text>
+            </Button>
+          </View>
+        )}
+      </ScrollArea>
+
+      <ImagePreview
+        imageUrl={previewImage}
+        visible={showPreview}
+        onClose={() => setShowPreview(false)}
+      />
+    </View>
+  );
+};
+
+const AdjustPage = () => {
+  const [params, setParams] = useState<ParamConfig[]>([]);
+  const [modifiedParams, setModifiedParams] = useState<Record<string, number>>({});
+  const [pendingImage, setPendingImage] = useState<{ imageId: string; imageUrl: string } | null>(null);
+  const [adjustedUrl, setAdjustedUrl] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [showPreview, setShowPreview] = useState(false);
+
+  useEffect(() => {
+    fetchParams();
+    fetchPendingImage();
+  }, []);
+
+  const fetchParams = async () => {
+    try {
+      setLoading(true);
+      const response = await Network.request({
+        url: '/api/config/params',
+        method: 'GET'
+      });
+
+      if (response.data.code === 200) {
+        setParams(response.data.data);
+
+        const initialModified: Record<string, number> = {};
+        response.data.data.forEach((param: ParamConfig) => {
+          initialModified[param.param_name] = param.param_value;
+        });
+        setModifiedParams(initialModified);
+      }
+    } catch (error) {
+      console.error('获取参数配置失败:', error);
+      Taro.showToast({ title: '获取参数失败', icon: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPendingImage = async () => {
+    try {
+      const response = await Network.request({
+        url: '/api/image/pending',
+        method: 'GET'
+      });
+
+      if (response.data.code === 200 && response.data.data) {
+        setPendingImage({
+          imageId: response.data.data.id,
+          imageUrl: response.data.data.image_url
+        });
+      }
+    } catch (error) {
+      console.error('获取待处理图片失败:', error);
+    }
+  };
+
+  const handleParamChange = (paramName: string, value: number) => {
+    setModifiedParams(prev => ({
+      ...prev,
+      [paramName]: value
+    }));
+  };
+
+  const handleApplyAdjustment = async () => {
+    if (!pendingImage) {
+      Taro.showToast({ title: '请先从图库选择图片', icon: 'none' });
+      return;
+    }
+    try {
+      setAdjusting(true);
+      const styleType = modifiedParams.style_type ?? modifiedParams.styleType;
+      const colorTone = modifiedParams.color_tone ?? modifiedParams.colorTone;
+      const brightness = modifiedParams.brightness ?? modifiedParams.brightness_value ?? 0;
+      const contrast = modifiedParams.contrast ?? modifiedParams.contrast_value ?? 0;
+
+      const response = await Network.request({
+        url: '/api/image/adjust',
+        method: 'POST',
+        data: {
+          imageId: pendingImage.imageId,
+          imageUrl: pendingImage.imageUrl,
+          params: {
+            styleType: styleType ? String(styleType) : undefined,
+            colorTone: colorTone ? String(colorTone) : undefined,
+            brightness: Number(brightness) || 0,
+            contrast: Number(contrast) || 0,
+          },
+        },
+      });
+
+      if (response.data?.code === 200 && response.data.data?.imageUrl) {
+        setAdjustedUrl(response.data.data.imageUrl);
+        Taro.showToast({ title: '已生成微调版本', icon: 'success' });
+      } else {
+        Taro.showToast({ title: '微调失败', icon: 'error' });
+      }
+    } catch (error) {
+      console.error('微调失败:', error);
+      Taro.showToast({ title: '网络异常', icon: 'error' });
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
+  const handleReset = () => {
+    const resetParams: Record<string, number> = {};
+    params.forEach((param) => {
+      resetParams[param.param_name] = param.param_value;
+    });
+    setModifiedParams(resetParams);
+    setAdjustedUrl('');
+  };
+
+  return (
+    <View className="min-h-screen bg-gray-50 pb-20">
+      <ScrollArea style={{ height: 'calc(100vh - 80px)' }}>
+        <View style={{ padding: '16px' }}>
+          <View style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: '20px'
+          }}>
+            <Settings size={20} color="#1E40AF" style={{ marginRight: '8px' }} />
+            <Text style={{ fontSize: '18px', fontWeight: '600', color: '#1E293B' }}>参数配置</Text>
+          </View>
+
+          {pendingImage && (
+            <View style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              padding: '16px',
+              marginBottom: '20px',
+              border: '1px solid #E2E8F0'
+            }}>
+              <Text style={{
+                fontSize: '14px',
+                color: '#64748B',
+                marginBottom: '12px',
+                display: 'block'
+              }}>待处理图片</Text>
+              <Image
+                src={pendingImage.imageUrl}
+                mode="widthFix"
+                style={{
+                  width: '100%',
+                  borderRadius: '12px',
+                  maxHeight: '200px',
+                  objectFit: 'contain'
+                }}
+                onClick={() => {
+                  setPreviewImage(pendingImage.imageUrl);
+                  setShowPreview(true);
+                }}
+              />
+            </View>
+          )}
+
+          {adjustedUrl && (
+            <View style={{
+              backgroundColor: '#ECFDF5',
+              borderRadius: '16px',
+              padding: '16px',
+              marginBottom: '20px',
+              border: '1px solid #A7F3D0'
+            }}>
+              <Text style={{
+                fontSize: '14px',
+                color: '#059669',
+                marginBottom: '12px',
+                display: 'block'
+              }}>微调结果</Text>
+              <Image
+                src={adjustedUrl}
+                mode="widthFix"
+                style={{
+                  width: '100%',
+                  borderRadius: '12px',
+                  maxHeight: '200px',
+                  objectFit: 'contain'
+                }}
+                onClick={() => {
+                  setPreviewImage(adjustedUrl);
+                  setShowPreview(true);
+                }}
+              />
+            </View>
+          )}
+
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: '16px',
+            padding: '20px',
+            border: '1px solid #E2E8F0'
+          }}>
+            {params.map((param) => (
+              <View key={param.param_name} style={{ marginBottom: '20px' }}>
+                <View style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
+                }}>
+                  <Text style={{ fontSize: '14px', color: '#334155' }}>{param.description}</Text>
+                  <Text style={{ fontSize: '14px', color: '#64748B' }}>
+                    {modifiedParams[param.param_name] ?? param.param_value}
+                  </Text>
+                </View>
+                <input
+                  type="range"
+                  min={param.min_value}
+                  max={param.max_value}
+                  step={param.step}
+                  value={modifiedParams[param.param_name] ?? param.param_value}
+                  onChange={(e: any) => handleParamChange(param.param_name, Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    height: '6px',
+                    borderRadius: '3px',
+                    backgroundColor: '#E2E8F0',
+                    outline: 'none',
+                    appearance: 'none'
+                  }}
+                />
+                <View style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  marginTop: '4px'
+                }}>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{param.min_value}</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{param.max_value}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <View style={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '12px',
+            marginTop: '20px'
+          }}>
+            <Button
+              style={{
+                flex: 1,
+                backgroundColor: '#F1F5F9',
+                borderRadius: '12px',
+                height: '44px'
+              }}
+              onClick={handleReset}
+            >
+              <Text style={{ fontSize: '14px', color: '#64748B' }}>重置</Text>
+            </Button>
+            <Button
+              style={{
+                flex: 1,
+                backgroundColor: '#1E40AF',
+                borderRadius: '12px',
+                height: '44px'
+              }}
+              onClick={handleApplyAdjustment}
+              disabled={adjusting}
+            >
+              {adjusting ? (
+                <LoaderCircle size={16} color="#fff" style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <Text style={{ fontSize: '14px', color: '#fff' }}>应用微调</Text>
+              )}
+            </Button>
+          </View>
+        </View>
+      </ScrollArea>
+
+      <ImagePreview
+        imageUrl={previewImage}
+        visible={showPreview}
+        onClose={() => setShowPreview(false)}
+      />
     </View>
   );
 };
