@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon, House, Settings, RefreshCw, ImageOff } from 'lucide-react-taro';
+import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon, House, Settings, RefreshCw, ImageOff, Star } from 'lucide-react-taro';
 import ImagePreview from '@/components/ImagePreview';
 import './index.css';
 
@@ -501,81 +501,29 @@ const HomePage = () => {
     );
   };
 
+  const handleRestartConversation = () => {
+    setMessages([{
+      id: 'init',
+      role: 'agent',
+      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？\n\n例如：品牌宣传图、团队风采展示、数据可视化图表、产品介绍海报等。',
+      timestamp: new Date(),
+      type: 'text'
+    }]);
+    setInputValue('');
+    setImagesToSend([]);
+    setSessionState({
+      sessionId: `session_${Date.now()}`,
+      stage: 'collecting'
+    });
+  };
+
   return (
-    <View className="min-h-screen bg-gray-50 pb-20">
+    <View className="min-h-screen bg-gray-50">
       <ScrollArea scrollTop={0} style={{ height: 'calc(100vh - 80px)' }}>
         <View style={{ padding: '16px' }}>
           {messages.map(renderMessage)}
         </View>
       </ScrollArea>
-
-      {imagesToSend.length > 0 && (
-        <View
-          style={{
-            position: 'fixed',
-            bottom: 70,
-            left: 0,
-            right: 0,
-            zIndex: 400,
-            backgroundColor: '#FFFFFF',
-            paddingLeft: '16px',
-            paddingRight: '16px',
-            paddingTop: '8px',
-            paddingBottom: '8px',
-            borderTop: '1px solid #E2E8F0',
-            boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
-          }}
-        >
-          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '8px' }}>
-            <Text className="block text-xs text-gray-500" style={{ flex: 1 }}>
-              待发送图片 ({imagesToSend.length})
-            </Text>
-            <Text className="block text-xs text-blue-500" onClick={clearAllPendingImages} style={{ marginLeft: '8px' }}>
-              清除全部
-            </Text>
-          </View>
-          <ScrollArea orientation="horizontal" style={{ flex: 0, maxHeight: '100px' }}>
-            <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', paddingRight: '16px' }}>
-              {imagesToSend.map((img) => (
-                <View
-                  key={img.id}
-                  style={{
-                    position: 'relative',
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '8px',
-                    overflow: 'hidden',
-                    border: '1px solid #E2E8F0'
-                  }}
-                >
-                  <Image
-                    src={img.url}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    mode="aspectFill"
-                  />
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: '-4px',
-                      right: '-4px',
-                      backgroundColor: '#EF4444',
-                      borderRadius: '50%',
-                      width: '20px',
-                      height: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onClick={() => removePendingImage(img.id)}
-                  >
-                    <Text className="block text-xs text-white">-</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </ScrollArea>
-        </View>
-      )}
 
       <View
         style={{
@@ -583,77 +531,163 @@ const HomePage = () => {
           bottom: 50,
           left: 0,
           right: 0,
-          padding: '16px',
           backgroundColor: '#FFFFFF',
           borderTop: '1px solid #E2E8F0',
-          boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.04)',
+          zIndex: 400
         }}
       >
-        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+        {imagesToSend.length > 0 && (
           <View
             style={{
-              flex: 1,
-              backgroundColor: '#F1F5F9',
-              borderRadius: '24px',
-              padding: '12px 16px',
-              display: 'flex',
-              alignItems: 'center'
+              paddingLeft: '16px',
+              paddingRight: '16px',
+              paddingTop: '8px',
+              paddingBottom: '8px',
+              borderBottom: '1px solid #E2E8F0'
             }}
           >
-            <Input
-              style={{
-                width: '100%',
-                fontSize: '16px',
-                backgroundColor: 'transparent'
-              }}
-              placeholder={sessionState.stage === 'violation'
-                ? '请根据建议优化您的需求...'
-                : '请描述您的图片需求...'}
-              value={inputValue}
-              onInput={(e) => setInputValue(e.detail.value)}
-              disabled={isProcessing}
-              placeholderStyle="color: #94A3B8"
-            />
+            <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '8px' }}>
+              <Text className="block text-xs text-gray-500" style={{ flex: 1 }}>
+                待发送图片 ({imagesToSend.length})
+              </Text>
+              <Text className="block text-xs text-blue-500" onClick={clearAllPendingImages} style={{ marginLeft: '8px' }}>
+                清除全部
+              </Text>
+            </View>
+            <ScrollArea orientation="horizontal" style={{ flex: 0, maxHeight: '100px' }}>
+              <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', paddingRight: '16px' }}>
+                {imagesToSend.map((img) => (
+                  <View
+                    key={img.id}
+                    style={{
+                      position: 'relative',
+                      width: '80px',
+                      height: '80px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid #E2E8F0'
+                    }}
+                  >
+                    <Image
+                      src={img.url}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      mode="aspectFill"
+                    />
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        backgroundColor: '#EF4444',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onClick={() => removePendingImage(img.id)}
+                    >
+                      <Text className="block text-xs text-white">-</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollArea>
           </View>
-          <View style={{ flexShrink: 0, display: 'flex', flexDirection: 'row', gap: '8px' }}>
-            <Button
-              size="default"
-              variant="outline"
-              onClick={handleImageUpload}
-              disabled={isProcessing}
+        )}
+
+        <View style={{ padding: '12px 16px' }}>
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+            <View
               style={{
+                flex: 1,
+                backgroundColor: '#F1F5F9',
                 borderRadius: '24px',
-                paddingLeft: '16px',
-                paddingRight: '16px',
-                height: '44px',
+                padding: '12px 16px',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#F8FAFC',
-                borderColor: '#E2E8F0'
+                alignItems: 'center'
               }}
             >
-              <ImageIcon size={18} color="#64748B" />
-            </Button>
+              <Input
+                style={{
+                  width: '100%',
+                  fontSize: '16px',
+                  backgroundColor: 'transparent'
+                }}
+                placeholder={sessionState.stage === 'violation'
+                  ? '请根据建议优化您的需求...'
+                  : '请描述您的图片需求...'}
+                value={inputValue}
+                onInput={(e) => setInputValue(e.detail.value)}
+                disabled={isProcessing}
+                placeholderStyle="color: #94A3B8"
+              />
+            </View>
+            <View style={{ flexShrink: 0, display: 'flex', flexDirection: 'row', gap: '8px' }}>
+              <Button
+                size="default"
+                variant="outline"
+                onClick={handleImageUpload}
+                disabled={isProcessing}
+                style={{
+                  borderRadius: '24px',
+                  paddingLeft: '16px',
+                  paddingRight: '16px',
+                  height: '44px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#F8FAFC',
+                  borderColor: '#E2E8F0'
+                }}
+              >
+                <ImageIcon size={18} color="#64748B" />
+              </Button>
+              <Button
+                size="default"
+                variant="default"
+                onClick={handleSendMessage}
+                disabled={isProcessing || !inputValue.trim() && imagesToSend.length === 0}
+                style={{
+                  borderRadius: '24px',
+                  paddingLeft: '24px',
+                  paddingRight: '24px',
+                  height: '44px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Send size={18} color="#fff" />
+              </Button>
+            </View>
+          </View>
+        </View>
+
+        {messages.length > 1 && (
+          <View style={{ padding: '8px 16px 12px' }}>
             <Button
-              size="default"
-              variant="default"
-              onClick={handleSendMessage}
-              disabled={isProcessing || !inputValue.trim() && imagesToSend.length === 0}
+              size="sm"
+              variant="outline"
+              onClick={handleRestartConversation}
               style={{
-                borderRadius: '24px',
-                paddingLeft: '24px',
-                paddingRight: '24px',
-                height: '44px',
+                width: '100%',
+                borderRadius: '8px',
+                height: '36px',
+                backgroundColor: '#FEF3C7',
+                borderColor: '#FCD34D',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <Send size={18} color="#fff" />
+              <RefreshCw size={14} color="#D97706" style={{ marginRight: '6px' }} />
+              <Text style={{ fontSize: '13px', color: '#D97706' }}>重新开始对话</Text>
             </Button>
           </View>
-        </View>
+        )}
       </View>
 
       <ImagePreview
@@ -671,8 +705,14 @@ const GalleryPage = () => {
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'favorites'>('all');
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    const savedFavorites = Taro.getStorageSync('imageFavorites');
+    if (savedFavorites) {
+      setFavorites(new Set(savedFavorites));
+    }
     loadImages();
   }, []);
 
@@ -728,11 +768,76 @@ const GalleryPage = () => {
     setFailedImages(prev => new Set([...prev, id]));
   };
 
+  const toggleFavorite = (e: any, id: string) => {
+    e.stopPropagation();
+    const newFavorites = new Set(favorites);
+    if (newFavorites.has(id)) {
+      newFavorites.delete(id);
+    } else {
+      newFavorites.add(id);
+    }
+    setFavorites(newFavorites);
+    Taro.setStorageSync('imageFavorites', Array.from(newFavorites));
+  };
+
+  const filteredImages = activeTab === 'favorites'
+    ? images.filter(img => favorites.has(img.id))
+    : images;
+
   return (
     <View className="min-h-screen bg-gray-50 pb-20">
       <ScrollArea style={{ height: 'calc(100vh - 80px)' }}>
         <View style={{ padding: '16px' }}>
-          {images.length === 0 && !loading ? (
+          <View style={{
+            display: 'flex',
+            flexDirection: 'row',
+            backgroundColor: '#F1F5F9',
+            borderRadius: '12px',
+            padding: '4px',
+            marginBottom: '16px'
+          }}>
+            <View
+              style={{
+                flex: 1,
+                height: '40px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: activeTab === 'all' ? '#FFFFFF' : 'transparent',
+                boxShadow: activeTab === 'all' ? '0 2px 4px rgba(0,0,0,0.04)' : 'none'
+              }}
+              onClick={() => setActiveTab('all')}
+            >
+              <Text style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: activeTab === 'all' ? '#1E40AF' : '#64748B'
+              }}>全部</Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                height: '40px',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: activeTab === 'favorites' ? '#FFFFFF' : 'transparent',
+                boxShadow: activeTab === 'favorites' ? '0 2px 4px rgba(0,0,0,0.04)' : 'none'
+              }}
+              onClick={() => setActiveTab('favorites')}
+            >
+              <Star size={16} color={activeTab === 'favorites' ? '#1E40AF' : '#64748B'} style={{ marginRight: '6px' }} />
+              <Text style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: activeTab === 'favorites' ? '#1E40AF' : '#64748B'
+              }}>收藏</Text>
+            </View>
+          </View>
+
+          {filteredImages.length === 0 && !loading ? (
             <View style={{
               display: 'flex',
               flexDirection: 'column',
@@ -746,14 +851,14 @@ const GalleryPage = () => {
                 color: '#64748B',
                 marginTop: '16px'
               }}>
-                暂无图片
+                {activeTab === 'favorites' ? '暂无收藏图片' : '暂无图片'}
               </Text>
               <Text style={{
                 fontSize: '14px',
                 color: '#94A3B8',
                 marginTop: '8px'
               }}>
-                去首页生成您的第一张营销素材吧！
+                {activeTab === 'favorites' ? '点击图片右上角星星图标收藏图片' : '去首页生成您的第一张营销素材吧！'}
               </Text>
             </View>
           ) : (
@@ -762,7 +867,7 @@ const GalleryPage = () => {
               gridTemplateColumns: 'repeat(2, 1fr)',
               gap: '12px'
             }}>
-              {images.map((image) => (
+              {filteredImages.map((image) => (
                 <View
                   key={image.id}
                   style={{
@@ -779,6 +884,28 @@ const GalleryPage = () => {
                     backgroundColor: '#F1F5F9',
                     position: 'relative'
                   }}>
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        zIndex: 10,
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onClick={(e) => toggleFavorite(e, image.id)}
+                    >
+                      <Star
+                        size={18}
+                        color={favorites.has(image.id) ? '#FCD34D' : '#FFFFFF'}
+                        filled={favorites.has(image.id)}
+                      />
+                    </View>
                     {failedImages.has(image.id) ? (
                       <View style={{
                         width: '100%',
@@ -799,21 +926,6 @@ const GalleryPage = () => {
                     )}
                   </View>
                   <View style={{ padding: '12px' }}>
-                    <View style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingBottom: '4px'
-                    }}>
-                      <Text style={{
-                        fontSize: '12px',
-                        color: image.status === '合规通过' ? '#047857' : '#B45309',
-                        fontWeight: '500'
-                      }}>
-                        {image.status}
-                      </Text>
-                    </View>
                     <Text style={{
                       fontSize: '12px',
                       color: '#94A3B8'
