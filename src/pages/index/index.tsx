@@ -163,6 +163,7 @@ const HomePage = () => {
   const [scrollToId, setScrollToId] = useState<string>('');
   const [previewImage, setPreviewImage] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
+  const [editImageId, setEditImageId] = useState<string | null>(null);
 
   useEffect(() => {
     if (scrollToId) {
@@ -359,6 +360,38 @@ const HomePage = () => {
     setImagesToSend([]);
   };
 
+  const handleRestartChat = () => {
+    setMessages([{
+      id: 'init',
+      role: 'agent',
+      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？\n\n例如：品牌宣传图、团队风采展示、数据可视化图表、产品介绍海报等。',
+      timestamp: new Date(),
+      type: 'text'
+    }]);
+    setInputValue('');
+    setSessionState({
+      sessionId: `session_${Date.now()}`,
+      stage: 'collecting'
+    });
+    setImagesToSend([]);
+    setEditImageId(null);
+    Taro.showToast({ title: '已重新开始对话', icon: 'success', duration: 1500 });
+  };
+
+  const updateImageNote = (id: string, field: 'imageType' | 'aspects' | 'position', value: string | string[]) => {
+    setImagesToSend(prev => prev.map(img => {
+      if (img.id !== id) return img;
+      if (field === 'imageType') {
+        return { ...img, imageType: value as 'reference' | 'included', aspects: value === 'reference' ? (img.aspects || []) : undefined, position: value === 'included' ? (img.position || '') : undefined };
+      } else if (field === 'aspects') {
+        return { ...img, aspects: (value as string[]).filter(v => v.trim()) };
+      } else if (field === 'position') {
+        return { ...img, position: value as string };
+      }
+      return img;
+    }));
+  };
+
   const renderMessage = (message: Message) => {
     const isUser = message.role === 'user';
 
@@ -502,80 +535,12 @@ const HomePage = () => {
   };
 
   return (
-    <View className="min-h-screen bg-gray-50 pb-20">
-      <ScrollArea scrollTop={0} style={{ height: 'calc(100vh - 80px)' }}>
+    <View className="min-h-screen bg-gray-50">
+      <ScrollArea scrollTop={0} style={{ height: 'calc(100vh - 180px)' }}>
         <View style={{ padding: '16px' }}>
           {messages.map(renderMessage)}
         </View>
       </ScrollArea>
-
-      {imagesToSend.length > 0 && (
-        <View
-          style={{
-            position: 'fixed',
-            bottom: 70,
-            left: 0,
-            right: 0,
-            zIndex: 400,
-            backgroundColor: '#FFFFFF',
-            paddingLeft: '16px',
-            paddingRight: '16px',
-            paddingTop: '8px',
-            paddingBottom: '8px',
-            borderTop: '1px solid #E2E8F0',
-            boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
-          }}
-        >
-          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '8px' }}>
-            <Text className="block text-xs text-gray-500" style={{ flex: 1 }}>
-              待发送图片 ({imagesToSend.length})
-            </Text>
-            <Text className="block text-xs text-blue-500" onClick={clearAllPendingImages} style={{ marginLeft: '8px' }}>
-              清除全部
-            </Text>
-          </View>
-          <ScrollArea orientation="horizontal" style={{ flex: 0, maxHeight: '100px' }}>
-            <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', paddingRight: '16px' }}>
-              {imagesToSend.map((img) => (
-                <View
-                  key={img.id}
-                  style={{
-                    position: 'relative',
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '8px',
-                    overflow: 'hidden',
-                    border: '1px solid #E2E8F0'
-                  }}
-                >
-                  <Image
-                    src={img.url}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    mode="aspectFill"
-                  />
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: '-4px',
-                      right: '-4px',
-                      backgroundColor: '#EF4444',
-                      borderRadius: '50%',
-                      width: '20px',
-                      height: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onClick={() => removePendingImage(img.id)}
-                  >
-                    <Text className="block text-xs text-white">-</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </ScrollArea>
-        </View>
-      )}
 
       <View
         style={{
@@ -583,75 +548,236 @@ const HomePage = () => {
           bottom: 50,
           left: 0,
           right: 0,
-          padding: '16px',
+          zIndex: 400,
           backgroundColor: '#FFFFFF',
           borderTop: '1px solid #E2E8F0',
           boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
         }}
       >
-        <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: '#F1F5F9',
-              borderRadius: '24px',
-              padding: '12px 16px',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            <Input
-              style={{
-                width: '100%',
-                fontSize: '16px',
-                backgroundColor: 'transparent'
-              }}
-              placeholder={sessionState.stage === 'violation'
-                ? '请根据建议优化您的需求...'
-                : '请描述您的图片需求...'}
-              value={inputValue}
-              onInput={(e) => setInputValue(e.detail.value)}
-              disabled={isProcessing}
-              placeholderStyle="color: #94A3B8"
-            />
+        {messages.length > 1 && (
+          <View style={{ padding: '8px 16px', borderBottom: '1px solid #F1F5F9' }}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleRestartChat}
+              style={{ height: '32px', paddingLeft: '12px', paddingRight: '12px' }}
+            >
+              <RefreshCw size={14} color="#64748B" style={{ marginRight: '6px' }} />
+              <Text style={{ fontSize: '12px', color: '#64748B' }}>重新开始对话</Text>
+            </Button>
           </View>
-          <View style={{ flexShrink: 0, display: 'flex', flexDirection: 'row', gap: '8px' }}>
-            <Button
-              size="default"
-              variant="outline"
-              onClick={handleImageUpload}
-              disabled={isProcessing}
+        )}
+
+        {imagesToSend.length > 0 && (
+          <View style={{ padding: '8px 16px', borderBottom: '1px solid #F1F5F9' }}>
+            <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: '8px' }}>
+              <Text className="block text-xs text-gray-500" style={{ flex: 1 }}>
+                待发送图片 ({imagesToSend.length})
+              </Text>
+              <Text className="block text-xs text-blue-500" onClick={clearAllPendingImages} style={{ marginLeft: '8px' }}>
+                清除全部
+              </Text>
+            </View>
+            <ScrollArea orientation="horizontal" style={{ flex: 0, maxHeight: '100px' }}>
+              <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', paddingRight: '16px' }}>
+                {imagesToSend.map((img) => (
+                  <View
+                    key={img.id}
+                    style={{
+                      position: 'relative',
+                      width: '80px',
+                      height: '80px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: `1px solid ${editImageId === img.id ? '#3B82F6' : '#E2E8F0'}`,
+                      backgroundColor: '#F8FAFC'
+                    }}
+                    onClick={() => setEditImageId(editImageId === img.id ? null : img.id)}
+                  >
+                    <Image
+                      src={img.url}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      mode="aspectFill"
+                    />
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        backgroundColor: '#EF4444',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onClick={(e) => { e.stopPropagation(); removePendingImage(img.id); }}
+                    >
+                      <Text className="block text-xs text-white">-</Text>
+                    </View>
+                    {(img.imageType === 'reference' || img.imageType === 'included') && (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          bottom: '0',
+                          left: '0',
+                          right: '0',
+                          backgroundColor: 'rgba(0,0,0,0.5)',
+                          padding: '2px 4px'
+                        }}
+                      >
+                        <Text className="block text-[10px] text-white">
+                          {img.imageType === 'reference' ? '参考图' : '包含元素'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </ScrollArea>
+
+            {editImageId && (
+              <View style={{ marginTop: '8px', padding: '8px', backgroundColor: '#F8FAFC', borderRadius: '8px' }}>
+                {(() => {
+                  const editingImg = imagesToSend.find(img => img.id === editImageId);
+                  if (!editingImg) return null;
+                  return (
+                    <View>
+                      <Text className="block text-xs text-gray-600 mb-4">图片类型</Text>
+                      <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', marginBottom: '8px' }}>
+                        <Button
+                          size="sm"
+                          variant={editingImg.imageType === 'reference' ? 'default' : 'outline'}
+                          onClick={() => updateImageNote(editImageId, 'imageType', 'reference')}
+                          style={{ flex: 1 }}
+                        >
+                          <Text style={{ fontSize: '12px' }}>参考图片</Text>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={editingImg.imageType === 'included' ? 'default' : 'outline'}
+                          onClick={() => updateImageNote(editImageId, 'imageType', 'included')}
+                          style={{ flex: 1 }}
+                        >
+                          <Text style={{ fontSize: '12px' }}>包含元素</Text>
+                        </Button>
+                      </View>
+
+                      {editingImg.imageType === 'reference' && (
+                        <View style={{ marginBottom: '8px' }}>
+                          <Text className="block text-xs text-gray-600 mb-2">借鉴方面（可多选）</Text>
+                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '6px' }}>
+                            {['风格', '色调', '构图', '氛围'].map(aspect => (
+                              <Button
+                                key={aspect}
+                                size="sm"
+                                variant={(editingImg.aspects || []).includes(aspect) ? 'default' : 'outline'}
+                                onClick={() => {
+                                  const currentAspects = editingImg.aspects || [];
+                                  const newAspects = currentAspects.includes(aspect)
+                                    ? currentAspects.filter(a => a !== aspect)
+                                    : [...currentAspects, aspect];
+                                  updateImageNote(editImageId, 'aspects', newAspects);
+                                }}
+                              >
+                                <Text style={{ fontSize: '12px' }}>{aspect}</Text>
+                              </Button>
+                            ))}
+                          </View>
+                        </View>
+                      )}
+
+                      {editingImg.imageType === 'included' && (
+                        <View>
+                          <Text className="block text-xs text-gray-600 mb-2">放置位置</Text>
+                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '6px' }}>
+                            {['左上角', '右上角', '左下角', '右下角', '顶部居中', '底部居中', '居中'].map(pos => (
+                              <Button
+                                key={pos}
+                                size="sm"
+                                variant={editingImg.position === pos ? 'default' : 'outline'}
+                                onClick={() => updateImageNote(editImageId, 'position', pos)}
+                              >
+                                <Text style={{ fontSize: '12px' }}>{pos}</Text>
+                              </Button>
+                            ))}
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
+              </View>
+            )}
+          </View>
+        )}
+
+        <View style={{ padding: '12px 16px' }}>
+          <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+            <View
               style={{
+                flex: 1,
+                backgroundColor: '#F1F5F9',
                 borderRadius: '24px',
-                paddingLeft: '16px',
-                paddingRight: '16px',
-                height: '44px',
+                padding: '12px 16px',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#F8FAFC',
-                borderColor: '#E2E8F0'
+                alignItems: 'center'
               }}
             >
-              <ImageIcon size={18} color="#64748B" />
-            </Button>
-            <Button
-              size="default"
-              variant="default"
-              onClick={handleSendMessage}
-              disabled={isProcessing || !inputValue.trim() && imagesToSend.length === 0}
-              style={{
-                borderRadius: '24px',
-                paddingLeft: '24px',
-                paddingRight: '24px',
-                height: '44px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <Send size={18} color="#fff" />
-            </Button>
+              <Input
+                style={{
+                  width: '100%',
+                  fontSize: '16px',
+                  backgroundColor: 'transparent'
+                }}
+                placeholder={sessionState.stage === 'violation'
+                  ? '请根据建议优化您的需求...'
+                  : '请描述您的图片需求...'}
+                value={inputValue}
+                onInput={(e) => setInputValue(e.detail.value)}
+                disabled={isProcessing}
+                placeholderStyle="color: #94A3B8"
+              />
+            </View>
+            <View style={{ flexShrink: 0, display: 'flex', flexDirection: 'row', gap: '8px' }}>
+              <Button
+                size="default"
+                variant="outline"
+                onClick={handleImageUpload}
+                disabled={isProcessing}
+                style={{
+                  borderRadius: '24px',
+                  paddingLeft: '16px',
+                  paddingRight: '16px',
+                  height: '44px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#F8FAFC',
+                  borderColor: '#E2E8F0'
+                }}
+              >
+                <ImageIcon size={18} color="#64748B" />
+              </Button>
+              <Button
+                size="default"
+                variant="default"
+                onClick={handleSendMessage}
+                disabled={isProcessing || !inputValue.trim() && imagesToSend.length === 0}
+                style={{
+                  borderRadius: '24px',
+                  paddingLeft: '24px',
+                  paddingRight: '24px',
+                  height: '44px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Send size={18} color="#fff" />
+              </Button>
+            </View>
           </View>
         </View>
       </View>
@@ -680,10 +806,14 @@ const GalleryPage = () => {
     setLoading(true);
     try {
       const userId = Taro.getStorageSync('userId');
+      const requestData: Record<string, any> = {};
+      if (userId) {
+        requestData.userId = userId;
+      }
       const response = await Network.request({
         url: '/api/image/list',
         method: 'GET',
-        data: { userId }
+        data: requestData
       });
 
       if (response.data.code === 200) {
@@ -693,7 +823,7 @@ const GalleryPage = () => {
           url: img.url,
           status: img.status || '合规通过',
           time: img.time || '',
-          needs: img.prompt
+          needs: img.prompt || img.description || ''
         })));
       }
     } catch (error) {
