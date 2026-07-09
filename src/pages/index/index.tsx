@@ -703,138 +703,142 @@ const HomePage = () => {
               </View>
             </ScrollArea>
 
-            {editImageId && (() => {
-              const editingImg = imagesToSend.find(img => img.id === editImageId);
-              if (!editingImg) return null;
-              return (
-                <View style={{ marginTop: '8px', padding: '12px', backgroundColor: '#F8FAFC', borderRadius: '8px' }}>
-                  <View style={{ marginBottom: '12px' }}>
-                    <Text className="block text-sm font-medium text-gray-700 mb-3">请选择图片用途</Text>
-                    <View style={{ display: 'flex', flexDirection: 'row', gap: '12px' }}>
-                      <Button
-                        size="default"
-                        variant={editingImg.imageType === 'reference' ? 'default' : 'outline'}
-                        onClick={() => updateImageNote(editImageId, 'imageType', 'reference')}
-                        style={{ flex: 1, height: '40px' }}
-                      >
-                        <Text style={{ fontSize: '14px' }}>参考图片</Text>
-                      </Button>
-                      <Button
-                        size="default"
-                        variant={editingImg.imageType === 'included' ? 'default' : 'outline'}
-                        onClick={() => updateImageNote(editImageId, 'imageType', 'included')}
-                        style={{ flex: 1, height: '40px' }}
-                      >
-                        <Text style={{ fontSize: '14px' }}>包含元素</Text>
-                      </Button>
-                    </View>
-                  </View>
-
-                  {editingImg.imageType === 'reference' && (
-                    <View style={{ marginBottom: '8px' }}>
-                      <Text className="block text-sm font-medium text-gray-700 mb-3">参考方向（可多选）</Text>
-                      <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
-                        {['风格', '色调', '构图', '氛围'].map(aspect => (
+            {editImageId && (
+              <View style={{ marginTop: '8px', padding: '12px', backgroundColor: '#F8FAFC', borderRadius: '8px' }}>
+                {(() => {
+                  const editingImg = imagesToSend.find(img => img.id === editImageId);
+                  if (!editingImg) return null;
+                  return (
+                    <View>
+                      <View style={{ marginBottom: '12px' }}>
+                        <Text className="block text-sm font-medium text-gray-700 mb-3">请选择图片用途</Text>
+                        <View style={{ display: 'flex', flexDirection: 'row', gap: '12px' }}>
                           <Button
-                            key={aspect}
-                            size="sm"
-                            variant={(editingImg.aspects || []).includes(aspect) ? 'default' : 'outline'}
-                            onClick={() => {
-                              const currentAspects = editingImg.aspects || [];
-                              const newAspects = currentAspects.includes(aspect)
-                                ? currentAspects.filter(a => a !== aspect)
-                                : [...currentAspects, aspect];
-                              updateImageNote(editImageId, 'aspects', newAspects);
-                            }}
-                            style={{ height: '36px', paddingLeft: '16px', paddingRight: '16px' }}
+                            size="default"
+                            variant={editingImg.imageType === 'reference' ? 'default' : 'outline'}
+                            onClick={() => updateImageNote(editImageId, 'imageType', 'reference')}
+                            style={{ flex: 1, height: '40px' }}
                           >
-                            <Text style={{ fontSize: '13px' }}>{aspect}</Text>
+                            <Text style={{ fontSize: '14px' }}>参考图片</Text>
                           </Button>
-                        ))}
-                      </View>
-                      {editingImg.aspects && editingImg.aspects.length > 0 && (
-                        <Text className="block text-xs text-gray-500 mt-2">
-                          已选：{editingImg.aspects.join('、')}
-                        </Text>
-                      )}
-                      <View style={{ marginTop: '8px', display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
-                        <Text className="block text-xs text-gray-500">自定义借鉴方面</Text>
-                        <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', flex: 1 }}>
-                          <Input
-                            style={{ flex: 1, fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px', height: '36px', boxSizing: 'border-box' }}
-                            placeholder="例如：字体、配色方案、元素布局..."
-                            value={editingImg.customAspect || ''}
-                            onInput={(e) => updateImageNote(editImageId, 'customAspect', e.detail.value)}
-                          />
                           <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (editingImg.customAspect?.trim()) {
-                                const currentAspects = editingImg.aspects || [];
-                                const custom = editingImg.customAspect.trim();
-                                if (!currentAspects.includes(custom)) {
-                                  updateImageNote(editImageId, 'aspects', [...currentAspects, custom]);
-                                  updateImageNote(editImageId, 'customAspect', '');
-                                }
-                              }
-                            }}
-                            style={{ height: '36px', paddingLeft: '12px', paddingRight: '12px', flexShrink: 0 }}
+                            size="default"
+                            variant={editingImg.imageType === 'included' ? 'default' : 'outline'}
+                            onClick={() => updateImageNote(editImageId, 'imageType', 'included')}
+                            style={{ flex: 1, height: '40px' }}
                           >
-                            <Text style={{ fontSize: '12px' }}>添加</Text>
+                            <Text style={{ fontSize: '14px' }}>包含元素</Text>
                           </Button>
                         </View>
                       </View>
-                    </View>
-                  )}
 
-                  {editingImg.imageType === 'included' && (
-                    <View>
-                      <Text className="block text-sm font-medium text-gray-700 mb-3">放置位置</Text>
-                      <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
-                        {['左上角', '右上角', '左下角', '右下角', '顶部居中', '底部居中', '居中'].map(pos => (
-                          <Button
-                            key={pos}
-                            size="sm"
-                            variant={editingImg.position === pos ? 'default' : 'outline'}
-                            onClick={() => updateImageNote(editImageId, 'position', pos)}
-                            style={{ height: '36px', paddingLeft: '16px', paddingRight: '16px' }}
-                          >
-                            <Text style={{ fontSize: '13px' }}>{pos}</Text>
-                          </Button>
-                        ))}
-                      </View>
-                      {editingImg.position && (
-                        <Text className="block text-xs text-gray-500 mt-2">
-                          已选：{editingImg.position}
-                        </Text>
+                      {editingImg.imageType === 'reference' && (
+                        <View style={{ marginBottom: '8px' }}>
+                          <Text className="block text-sm font-medium text-gray-700 mb-3">参考方向（可多选）</Text>
+                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
+                            {['风格', '色调', '构图', '氛围'].map(aspect => (
+                              <Button
+                                key={aspect}
+                                size="sm"
+                                variant={(editingImg.aspects || []).includes(aspect) ? 'default' : 'outline'}
+                                onClick={() => {
+                                  const currentAspects = editingImg.aspects || [];
+                                  const newAspects = currentAspects.includes(aspect)
+                                    ? currentAspects.filter(a => a !== aspect)
+                                    : [...currentAspects, aspect];
+                                  updateImageNote(editImageId, 'aspects', newAspects);
+                                }}
+                                style={{ height: '36px', paddingLeft: '16px', paddingRight: '16px' }}
+                              >
+                                <Text style={{ fontSize: '13px' }}>{aspect}</Text>
+                              </Button>
+                            ))}
+                          </View>
+                          {editingImg.aspects && editingImg.aspects.length > 0 && (
+                            <Text className="block text-xs text-gray-500 mt-2">
+                              已选：{editingImg.aspects.join('、')}
+                            </Text>
+                          )}
+                          <View style={{ marginTop: '8px' }}>
+                            <Text className="block text-xs text-gray-500 mb-2">自定义借鉴方面</Text>
+                            <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
+                              <Input
+                                style={{ flex: 1, height: '36px', fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '0 12px' }}
+                                placeholder="例如：字体、配色方案、元素布局..."
+                                value={editingImg.customAspect || ''}
+                                onInput={(e) => updateImageNote(editImageId, 'customAspect', e.detail.value)}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  if (editingImg.customAspect?.trim()) {
+                                    const currentAspects = editingImg.aspects || [];
+                                    const custom = editingImg.customAspect.trim();
+                                    if (!currentAspects.includes(custom)) {
+                                      updateImageNote(editImageId, 'aspects', [...currentAspects, custom]);
+                                      updateImageNote(editImageId, 'customAspect', '');
+                                    }
+                                  }
+                                }}
+                                style={{ height: '36px', paddingLeft: '12px', paddingRight: '12px', flexShrink: 0 }}
+                              >
+                                <Text style={{ fontSize: '12px' }}>添加</Text>
+                              </Button>
+                            </View>
+                          </View>
+                        </View>
                       )}
-                      <View style={{ marginTop: '12px' }}>
-                        <Text className="block text-sm font-medium text-gray-700 mb-2">图片备注</Text>
-                        <Textarea
-                          style={{ width: '100%', minHeight: '60px', fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}
-                          placeholder="请描述这张图片是什么，以及希望如何处理它。例如：这是XX公司的logo，希望保持原有的颜色和比例..."
-                          value={editingImg.note || ''}
-                          onInput={(e) => updateImageNote(editImageId, 'note', e.detail.value)}
-                          maxlength={200}
-                        />
-                        <Text className="block text-xs text-gray-400 mt-1" style={{ textAlign: 'right' }}>
-                          {(editingImg.note?.length || 0)}/200
-                        </Text>
-                      </View>
-                    </View>
-                  )}
 
-                  {!editingImg.imageType && (
-                    <View style={{ marginTop: '8px', padding: '8px', backgroundColor: '#FEF3C7', borderRadius: '6px' }}>
-                      <Text className="block text-xs text-amber-800">
-                        请先选择图片类型，以便准确处理您的图片
-                      </Text>
+                      {editingImg.imageType === 'included' && (
+                        <View>
+                          <Text className="block text-sm font-medium text-gray-700 mb-3">放置位置</Text>
+                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
+                            {['左上角', '右上角', '左下角', '右下角', '顶部居中', '底部居中', '居中'].map(pos => (
+                              <Button
+                                key={pos}
+                                size="sm"
+                                variant={editingImg.position === pos ? 'default' : 'outline'}
+                                onClick={() => updateImageNote(editImageId, 'position', pos)}
+                                style={{ height: '36px', paddingLeft: '16px', paddingRight: '16px' }}
+                              >
+                                <Text style={{ fontSize: '13px' }}>{pos}</Text>
+                              </Button>
+                            ))}
+                          </View>
+                          {editingImg.position && (
+                            <Text className="block text-xs text-gray-500 mt-2">
+                              已选：{editingImg.position}
+                            </Text>
+                          )}
+                          <View style={{ marginTop: '12px' }}>
+                            <Text className="block text-sm font-medium text-gray-700 mb-2">图片备注</Text>
+                            <Textarea
+                              style={{ width: '100%', minHeight: '60px', fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}
+                              placeholder="请描述这张图片是什么，以及希望如何处理它。例如：这是XX公司的logo，希望保持原有的颜色和比例..."
+                              value={editingImg.note || ''}
+                              onInput={(e) => updateImageNote(editImageId, 'note', e.detail.value)}
+                              maxlength={200}
+                            />
+                            <Text className="block text-xs text-gray-400 mt-1" style={{ textAlign: 'right' }}>
+                              {(editingImg.note?.length || 0)}/200
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {!editingImg.imageType && (
+                        <View style={{ marginTop: '8px', padding: '8px', backgroundColor: '#FEF3C7', borderRadius: '6px' }}>
+                          <Text className="block text-xs text-amber-800">
+                            请先选择图片类型，以便准确处理您的图片
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
-              );
-            })()}
+                  );
+                })()}
+              </View>
+            )}
           </View>
         )}
 
