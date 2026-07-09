@@ -335,19 +335,44 @@ const HomePage = () => {
     }
   };
 
-  const handleImageUpload = () => {
+  const handleImageUpload = async () => {
     Taro.chooseImage({
       count: 9,
       sizeType: ['compressed'],
       sourceType: ['album', 'camera'],
-      success: (res) => {
-        const newImages: PendingImage[] = res.tempFilePaths.map((path, index) => ({
-          id: `img_${Date.now()}_${index}`,
-          url: path,
-          imageType: 'included' as const,
-          position: ''
-        }));
-        setImagesToSend(prev => [...prev, ...newImages]);
+      success: async (res) => {
+        Taro.showLoading({ title: '上传图片中...' });
+        const newImages: PendingImage[] = [];
+        for (let i = 0; i < res.tempFilePaths.length; i++) {
+          const path = res.tempFilePaths[i];
+          try {
+            const uploadResult = await Network.uploadFile({
+              url: '/api/image/upload',
+              filePath: path,
+              name: 'image'
+            });
+            const responseData = typeof uploadResult.data === 'string' 
+              ? JSON.parse(uploadResult.data) 
+              : uploadResult.data;
+            if (responseData.code === 200 && responseData.data?.url) {
+              newImages.push({
+                id: `img_${Date.now()}_${i}`,
+                url: responseData.data.url,
+                imageType: 'included' as const,
+                position: ''
+              });
+            } else {
+              Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
+            }
+          } catch (error) {
+            console.error('上传图片失败:', error);
+            Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
+          }
+        }
+        Taro.hideLoading();
+        if (newImages.length > 0) {
+          setImagesToSend(prev => [...prev, ...newImages]);
+        }
       }
     });
   };
