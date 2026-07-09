@@ -29,7 +29,7 @@ export class ImageController {
     imageUrls?: string[];
     imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>;
     referenceImages?: Array<{ url: string; aspects?: string[] }>;
-    includedImages?: Array<{ url: string; position?: string }>;
+    includedImages?: Array<{ url: string; position?: string; note?: string }>;
   }) {
     console.log('[API] Chat request:', body);
     

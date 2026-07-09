@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, Image } from '@tarojs/components';
+import { View, Text, Image, Textarea } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -59,7 +59,9 @@ interface PendingImage {
   localUrl?: string;
   imageType?: 'reference' | 'included';
   aspects?: string[];
+  customAspect?: string;
   position?: string;
+  note?: string;
 }
 
 interface GalleryImage {
@@ -208,7 +210,8 @@ const HomePage = () => {
     }
 
     try {
-      const userId = Taro.getStorageSync('userId');
+      const userInfo = Taro.getStorageSync('userInfo');
+      const userId = userInfo?.id || '';
       const requestData: Record<string, any> = {
         sessionId: sessionState.sessionId,
         message: userMessage.content,
@@ -229,7 +232,8 @@ const HomePage = () => {
         if (includedElements.length > 0) {
           requestData.includedImages = includedElements.map(img => ({
             url: img.url,
-            position: img.position || ''
+            position: img.position || '',
+            note: img.note || ''
           }));
         }
       }
@@ -405,7 +409,7 @@ const HomePage = () => {
     Taro.showToast({ title: '已重新开始对话', icon: 'success', duration: 1500 });
   };
 
-  const updateImageNote = (id: string, field: 'imageType' | 'aspects' | 'position', value: string | string[]) => {
+  const updateImageNote = (id: string, field: 'imageType' | 'aspects' | 'position' | 'customAspect' | 'note', value: string | string[]) => {
     setImagesToSend(prev => prev.map(img => {
       if (img.id !== id) return img;
       if (field === 'imageType') {
@@ -414,6 +418,14 @@ const HomePage = () => {
         return { ...img, aspects: (value as string[]).filter(v => v.trim()) };
       } else if (field === 'position') {
         return { ...img, position: value as string };
+      } else if (field === 'customAspect') {
+        const custom = (value as string).trim();
+        if (!custom) {
+          return { ...img, customAspect: '' };
+        }
+        return { ...img, customAspect: custom, aspects: [...(img.aspects || []).filter(a => a !== custom), custom] };
+      } else if (field === 'note') {
+        return { ...img, note: value as string };
       }
       return img;
     }));
@@ -747,6 +759,34 @@ const HomePage = () => {
                               已选：{editingImg.aspects.join('、')}
                             </Text>
                           )}
+                          <View style={{ marginTop: '8px' }}>
+                            <Text className="block text-xs text-gray-500 mb-2">自定义借鉴方面</Text>
+                            <View style={{ display: 'flex', flexDirection: 'row', gap: '8px' }}>
+                              <Input
+                                style={{ flex: 1, fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}
+                                placeholder="例如：字体、配色方案、元素布局..."
+                                value={editingImg.customAspect || ''}
+                                onInput={(e) => updateImageNote(editImageId, 'customAspect', e.detail.value)}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  if (editingImg.customAspect?.trim()) {
+                                    const currentAspects = editingImg.aspects || [];
+                                    const custom = editingImg.customAspect.trim();
+                                    if (!currentAspects.includes(custom)) {
+                                      updateImageNote(editImageId, 'aspects', [...currentAspects, custom]);
+                                      updateImageNote(editImageId, 'customAspect', '');
+                                    }
+                                  }
+                                }}
+                                style={{ height: '36px', paddingLeft: '12px', paddingRight: '12px' }}
+                              >
+                                <Text style={{ fontSize: '12px' }}>添加</Text>
+                              </Button>
+                            </View>
+                          </View>
                         </View>
                       )}
 
@@ -771,6 +811,19 @@ const HomePage = () => {
                               已选：{editingImg.position}
                             </Text>
                           )}
+                          <View style={{ marginTop: '12px' }}>
+                            <Text className="block text-sm font-medium text-gray-700 mb-2">图片备注</Text>
+                            <Textarea
+                              style={{ width: '100%', minHeight: '60px', fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}
+                              placeholder="请描述这张图片是什么，以及希望如何处理它。例如：这是XX公司的logo，希望保持原有的颜色和比例..."
+                              value={editingImg.note || ''}
+                              onInput={(e) => updateImageNote(editImageId, 'note', e.detail.value)}
+                              maxlength={200}
+                            />
+                            <Text className="block text-xs text-gray-400 mt-1" style={{ textAlign: 'right' }}>
+                              {(editingImg.note?.length || 0)}/200
+                            </Text>
+                          </View>
                         </View>
                       )}
 
@@ -881,7 +934,8 @@ const GalleryPage = () => {
   const loadImages = async () => {
     setLoading(true);
     try {
-      const userId = Taro.getStorageSync('userId');
+      const userInfo = Taro.getStorageSync('userInfo');
+      const userId = userInfo?.id || '';
       const requestData: Record<string, any> = {};
       if (userId) {
         requestData.userId = userId;

@@ -27,6 +27,7 @@ export interface IncludedElement {
   type: 'image' | 'text';
   value: string;
   position?: string;
+  note?: string;
 }
 
 export interface StructuredNeeds {
@@ -101,7 +102,8 @@ function formatNeedsForPrompt(needs: StructuredNeeds, exclude: Array<keyof Struc
         elements.forEach((elem, index) => {
           const typeLabel = elem.type === 'image' ? '图片' : '文字';
           const positionText = elem.position ? `，位置：${elem.position}` : '';
-          lines.push(`  ${index + 1}. [${typeLabel}] ${elem.value}${positionText}`);
+          const noteText = elem.note ? `，备注：${elem.note}` : '';
+          lines.push(`  ${index + 1}. [${typeLabel}] ${elem.value}${positionText}${noteText}`);
         });
       } else {
         lines.push(`- ${NEED_FIELD_LABELS[key]}：${value}`);
@@ -174,7 +176,7 @@ export class ImageService {
    * 多轮对话接口 - 需求收集Agent
    * 根据当前状态决定下一步行动
    */
-  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>, referenceImages?: Array<{ url: string; aspects?: string[] }>, includedImages?: Array<{ url: string; position?: string }>): Promise<ChatResponse> {
+  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>, referenceImages?: Array<{ url: string; aspects?: string[] }>, includedImages?: Array<{ url: string; position?: string; note?: string }>): Promise<ChatResponse> {
     console.log(`\n===========================================`);
     console.log(`[Chat] NEW REQUEST`);
     console.log(`[Chat] Session: ${sessionId}`);
@@ -260,7 +262,8 @@ export class ImageService {
       const newElements = includedImages.map(img => ({
         type: 'image' as const,
         value: img.url,
-        position: img.position || ''
+        position: img.position || '',
+        note: img.note || ''
       }));
       
       session.structuredNeeds.includedElements = [
@@ -855,8 +858,9 @@ ${needsText}
       ? `包含元素：\n${includedElements.map((elem, idx) => {
           const typeLabel = elem.type === 'image' ? '图片' : '文字';
           const positionText = elem.position ? `，放置在${elem.position}` : '';
-          return `元素${idx + 1}：[${typeLabel}] ${elem.value}${positionText}`;
-        }).join('\n')}\n\n生成的图片中必须包含上述所有元素，并按照指定位置放置。`
+          const noteText = elem.note ? `，备注：${elem.note}` : '';
+          return `元素${idx + 1}：[${typeLabel}] ${elem.value}${positionText}${noteText}`;
+        }).join('\n')}\n\n生成的图片中必须包含上述所有元素，并按照指定位置放置。对于有备注的元素，请根据备注描述进行处理。`
       : '';
 
     const promptGenerator = `根据以下需求，生成一张营销素材图片的正、负向提示词。
