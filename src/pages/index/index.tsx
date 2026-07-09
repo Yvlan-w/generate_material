@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, Bot, User, TriangleAlert, Check, LoaderCircle, Sparkles, Image as ImageIcon, House, Settings, RefreshCw, ImageOff } from 'lucide-react-taro';
+import { Send, TriangleAlert, Check, LoaderCircle, Image as ImageIcon, House, Settings, RefreshCw, ImageOff } from 'lucide-react-taro';
 import ImagePreview from '@/components/ImagePreview';
 import './index.css';
 
@@ -687,13 +687,13 @@ const GalleryPage = () => {
       });
 
       if (response.data.code === 200) {
-        const imageList = response.data.data || [];
+        const imageList = response.data.data?.images || response.data.data || [];
         setImages(imageList.map((img: any) => ({
           id: img.id,
-          url: img.image_url,
+          url: img.url,
           status: img.status || '合规通过',
-          time: img.created_at ? formatTime(img.created_at) : '',
-          needs: img.needs
+          time: img.time || '',
+          needs: img.prompt
         })));
       }
     } catch (error) {
@@ -703,23 +703,7 @@ const GalleryPage = () => {
     }
   };
 
-  const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (days === 0) {
-      return `${Math.floor(diff / (1000 * 60 * 60))}小时前`;
-    } else if (days === 1) {
-      return '昨天';
-    } else if (days < 7) {
-      return `${days}天前`;
-    } else {
-      return `${date.getMonth() + 1}/${date.getDate()}`;
-    }
-  };
-
-  const handleImageClick = (id: string, url: string) => {
+  const handleImageClick = (_id: string, url: string) => {
     setPreviewImage(url);
     setShowPreview(true);
   };
@@ -864,7 +848,7 @@ const AdjustPage = () => {
   const [modifiedParams, setModifiedParams] = useState<Record<string, number>>({});
   const [pendingImage, setPendingImage] = useState<{ imageId: string; imageUrl: string } | null>(null);
   const [adjustedUrl, setAdjustedUrl] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
   const [previewImage, setPreviewImage] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
@@ -883,10 +867,11 @@ const AdjustPage = () => {
       });
 
       if (response.data.code === 200) {
-        setParams(response.data.data);
+        const paramsData = response.data.data?.params || response.data.data || [];
+        setParams(paramsData);
 
         const initialModified: Record<string, number> = {};
-        response.data.data.forEach((param: ParamConfig) => {
+        paramsData.forEach((param: ParamConfig) => {
           initialModified[param.param_name] = param.param_value;
         });
         setModifiedParams(initialModified);

@@ -1529,4 +1529,30 @@ ${formatNeedsForPrompt(currentNeeds)}
       throw error;
     }
   }
+
+  /**
+   * 获取待处理图片（用于参数配置页面）
+   * 返回最近生成的图片
+   */
+  getPendingImage(): { id: string; image_url: string } | null {
+    const images = Array.from(this.generatedImages.entries())
+      .filter(([key]) => !key.startsWith('url:'));
+    
+    if (images.length === 0) {
+      return null;
+    }
+
+    const latest = images.reduce((a, b) => {
+      const idA = a[0];
+      const idB = b[0];
+      const timeA = idA.startsWith('img_') ? parseInt(idA.split('_')[1], 10) : 0;
+      const timeB = idB.startsWith('img_') ? parseInt(idB.split('_')[1], 10) : 0;
+      return timeA > timeB ? a : b;
+    });
+
+    return {
+      id: latest[0],
+      image_url: latest[1].url
+    };
+  }
 }

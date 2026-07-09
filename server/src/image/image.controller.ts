@@ -136,6 +136,23 @@ export class ImageController {
   }
 
   /**
+   * 获取待处理图片
+   * GET /api/image/pending
+   */
+  @Get('pending')
+  async getPendingImage() {
+    console.log('[API] Get pending image');
+    
+    const pendingImage = this.imageService.getPendingImage();
+    
+    return {
+      code: 200,
+      msg: 'success',
+      data: pendingImage || null
+    };
+  }
+
+  /**
    * 图片上传接口
    * POST /api/image/upload
    * 支持用户上传参考图片
