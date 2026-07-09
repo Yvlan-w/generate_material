@@ -358,7 +358,8 @@ const HomePage = () => {
               newImages.push({
                 id: `img_${Date.now()}_${i}`,
                 url: responseData.data.url,
-                imageType: 'included' as const,
+                imageType: undefined,
+                aspects: [],
                 position: ''
               });
             } else {
@@ -372,6 +373,7 @@ const HomePage = () => {
         Taro.hideLoading();
         if (newImages.length > 0) {
           setImagesToSend(prev => [...prev, ...newImages]);
+          setEditImageId(newImages[0].id);
         }
       }
     });
@@ -614,7 +616,7 @@ const HomePage = () => {
                       height: '80px',
                       borderRadius: '8px',
                       overflow: 'hidden',
-                      border: `1px solid ${editImageId === img.id ? '#3B82F6' : '#E2E8F0'}`,
+                      border: `2px solid ${editImageId === img.id ? '#3B82F6' : (img.imageType ? '#E2E8F0' : '#F59E0B')}`,
                       backgroundColor: '#F8FAFC'
                     }}
                     onClick={() => setEditImageId(editImageId === img.id ? null : img.id)}
@@ -635,26 +637,53 @@ const HomePage = () => {
                         height: '20px',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center'
+                        justifyContent: 'center',
+                        zIndex: 10
                       }}
                       onClick={(e) => { e.stopPropagation(); removePendingImage(img.id); }}
                     >
                       <Text className="block text-xs text-white">-</Text>
                     </View>
-                    {(img.imageType === 'reference' || img.imageType === 'included') && (
+                    {img.imageType === 'reference' && (
                       <View
                         style={{
                           position: 'absolute',
                           bottom: '0',
                           left: '0',
                           right: '0',
-                          backgroundColor: 'rgba(0,0,0,0.5)',
+                          backgroundColor: 'rgba(59, 130, 246, 0.8)',
                           padding: '2px 4px'
                         }}
                       >
-                        <Text className="block text-[10px] text-white">
-                          {img.imageType === 'reference' ? '参考图' : '包含元素'}
-                        </Text>
+                        <Text className="block text-[10px] text-white font-medium">参考图</Text>
+                      </View>
+                    )}
+                    {img.imageType === 'included' && (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          bottom: '0',
+                          left: '0',
+                          right: '0',
+                          backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                          padding: '2px 4px'
+                        }}
+                      >
+                        <Text className="block text-[10px] text-white font-medium">包含元素</Text>
+                      </View>
+                    )}
+                    {!img.imageType && (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          top: '0',
+                          left: '0',
+                          right: '0',
+                          backgroundColor: 'rgba(245, 158, 11, 0.9)',
+                          padding: '2px 4px'
+                        }}
+                      >
+                        <Text className="block text-[10px] text-white font-medium">未设置</Text>
                       </View>
                     )}
                   </View>
@@ -663,36 +692,38 @@ const HomePage = () => {
             </ScrollArea>
 
             {editImageId && (
-              <View style={{ marginTop: '8px', padding: '8px', backgroundColor: '#F8FAFC', borderRadius: '8px' }}>
+              <View style={{ marginTop: '8px', padding: '12px', backgroundColor: '#F8FAFC', borderRadius: '8px' }}>
                 {(() => {
                   const editingImg = imagesToSend.find(img => img.id === editImageId);
                   if (!editingImg) return null;
                   return (
                     <View>
-                      <Text className="block text-xs text-gray-600 mb-4">图片类型</Text>
-                      <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', marginBottom: '8px' }}>
-                        <Button
-                          size="sm"
-                          variant={editingImg.imageType === 'reference' ? 'default' : 'outline'}
-                          onClick={() => updateImageNote(editImageId, 'imageType', 'reference')}
-                          style={{ flex: 1 }}
-                        >
-                          <Text style={{ fontSize: '12px' }}>参考图片</Text>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={editingImg.imageType === 'included' ? 'default' : 'outline'}
-                          onClick={() => updateImageNote(editImageId, 'imageType', 'included')}
-                          style={{ flex: 1 }}
-                        >
-                          <Text style={{ fontSize: '12px' }}>包含元素</Text>
-                        </Button>
+                      <View style={{ marginBottom: '12px' }}>
+                        <Text className="block text-sm font-medium text-gray-700 mb-3">请选择图片用途</Text>
+                        <View style={{ display: 'flex', flexDirection: 'row', gap: '12px' }}>
+                          <Button
+                            size="default"
+                            variant={editingImg.imageType === 'reference' ? 'default' : 'outline'}
+                            onClick={() => updateImageNote(editImageId, 'imageType', 'reference')}
+                            style={{ flex: 1, height: '40px' }}
+                          >
+                            <Text style={{ fontSize: '14px' }}>参考图片</Text>
+                          </Button>
+                          <Button
+                            size="default"
+                            variant={editingImg.imageType === 'included' ? 'default' : 'outline'}
+                            onClick={() => updateImageNote(editImageId, 'imageType', 'included')}
+                            style={{ flex: 1, height: '40px' }}
+                          >
+                            <Text style={{ fontSize: '14px' }}>包含元素</Text>
+                          </Button>
+                        </View>
                       </View>
 
                       {editingImg.imageType === 'reference' && (
                         <View style={{ marginBottom: '8px' }}>
-                          <Text className="block text-xs text-gray-600 mb-2">借鉴方面（可多选）</Text>
-                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '6px' }}>
+                          <Text className="block text-sm font-medium text-gray-700 mb-3">参考方向（可多选）</Text>
+                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
                             {['风格', '色调', '构图', '氛围'].map(aspect => (
                               <Button
                                 key={aspect}
@@ -705,29 +736,49 @@ const HomePage = () => {
                                     : [...currentAspects, aspect];
                                   updateImageNote(editImageId, 'aspects', newAspects);
                                 }}
+                                style={{ height: '36px', paddingLeft: '16px', paddingRight: '16px' }}
                               >
-                                <Text style={{ fontSize: '12px' }}>{aspect}</Text>
+                                <Text style={{ fontSize: '13px' }}>{aspect}</Text>
                               </Button>
                             ))}
                           </View>
+                          {editingImg.aspects && editingImg.aspects.length > 0 && (
+                            <Text className="block text-xs text-gray-500 mt-2">
+                              已选：{editingImg.aspects.join('、')}
+                            </Text>
+                          )}
                         </View>
                       )}
 
                       {editingImg.imageType === 'included' && (
                         <View>
-                          <Text className="block text-xs text-gray-600 mb-2">放置位置</Text>
-                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '6px' }}>
+                          <Text className="block text-sm font-medium text-gray-700 mb-3">放置位置</Text>
+                          <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8px' }}>
                             {['左上角', '右上角', '左下角', '右下角', '顶部居中', '底部居中', '居中'].map(pos => (
                               <Button
                                 key={pos}
                                 size="sm"
                                 variant={editingImg.position === pos ? 'default' : 'outline'}
                                 onClick={() => updateImageNote(editImageId, 'position', pos)}
+                                style={{ height: '36px', paddingLeft: '16px', paddingRight: '16px' }}
                               >
-                                <Text style={{ fontSize: '12px' }}>{pos}</Text>
+                                <Text style={{ fontSize: '13px' }}>{pos}</Text>
                               </Button>
                             ))}
                           </View>
+                          {editingImg.position && (
+                            <Text className="block text-xs text-gray-500 mt-2">
+                              已选：{editingImg.position}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+
+                      {!editingImg.imageType && (
+                        <View style={{ marginTop: '8px', padding: '8px', backgroundColor: '#FEF3C7', borderRadius: '6px' }}>
+                          <Text className="block text-xs text-amber-800">
+                            请先选择图片类型，以便准确处理您的图片
+                          </Text>
                         </View>
                       )}
                     </View>
