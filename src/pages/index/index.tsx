@@ -364,7 +364,9 @@ const HomePage = () => {
                 url: responseData.data.url,
                 imageType: undefined,
                 aspects: [],
-                position: ''
+                customAspect: '',
+                position: '',
+                note: ''
               });
             } else {
               Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
@@ -590,7 +592,9 @@ const HomePage = () => {
           zIndex: 400,
           backgroundColor: '#FFFFFF',
           borderTop: '1px solid #E2E8F0',
-          boxShadow: '0 -2px 8px rgba(0,0,0,0.04)'
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.04)',
+          maxHeight: '60vh',
+          overflowY: 'auto'
         }}
       >
         {messages.length > 1 && (
