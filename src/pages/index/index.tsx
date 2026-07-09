@@ -762,12 +762,14 @@ const HomePage = () => {
                           <View style={{ marginTop: '8px' }}>
                             <Text className="block text-xs text-gray-500 mb-2">自定义借鉴方面</Text>
                             <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
-                              <Input
-                                style={{ flex: 1, height: '36px', fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '0 12px' }}
-                                placeholder="例如：字体、配色方案、元素布局..."
-                                value={editingImg.customAspect || ''}
-                                onInput={(e) => updateImageNote(editImageId, 'customAspect', e.detail.value)}
-                              />
+                              <View style={{ flex: 1, height: '36px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px' }}>
+                                <Input
+                                  style={{ width: '100%', height: '100%', fontSize: '13px', backgroundColor: 'transparent', padding: '0 12px' }}
+                                  placeholder="例如：字体、配色方案、元素布局..."
+                                  value={editingImg.customAspect || ''}
+                                  onInput={(e) => updateImageNote(editImageId, 'customAspect', e.detail.value)}
+                                />
+                              </View>
                               <Button
                                 size="sm"
                                 variant="outline"
