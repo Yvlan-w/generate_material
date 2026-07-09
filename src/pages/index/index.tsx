@@ -421,11 +421,7 @@ const HomePage = () => {
       } else if (field === 'position') {
         return { ...img, position: value as string };
       } else if (field === 'customAspect') {
-        const custom = (value as string).trim();
-        if (!custom) {
-          return { ...img, customAspect: '' };
-        }
-        return { ...img, customAspect: custom, aspects: [...(img.aspects || []).filter(a => a !== custom), custom] };
+        return { ...img, customAspect: value as string };
       } else if (field === 'note') {
         return { ...img, note: value as string };
       }
