@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, Image, Textarea } from '@tarojs/components';
+import { View, Text, Image, Textarea, Slider } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -1311,21 +1311,21 @@ const AdjustPage = () => {
                 justifyContent: 'center',
                 marginRight: '12px'
               }}>
-                {userInfo?.avatarUrl ? (
+                {userInfo?.avatar_url ? (
                   <Image
-                    src={userInfo.avatarUrl}
+                    src={userInfo.avatar_url}
                     mode="aspectFill"
                     style={{ width: '100%', height: '100%', borderRadius: '50%' }}
                   />
                 ) : (
                   <Text style={{ fontSize: '18px', color: '#6366F1', fontWeight: '600' }}>
-                    {userInfo?.nickName?.charAt(0) || '用'}
+                    {userInfo?.nickname?.charAt(0) || '用'}
                   </Text>
                 )}
               </View>
               <View>
                 <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1E293B' }}>
-                  {userInfo?.nickName || '未登录'}
+                  {userInfo?.nickname || '未登录'}
                 </Text>
                 <Text style={{ fontSize: '12px', color: '#64748B', marginTop: '4px', display: 'block' }}>
                   {userInfo?.id ? `用户ID: ${userInfo.id.substring(0, 8)}...` : '请登录以使用完整功能'}
@@ -1368,21 +1368,19 @@ const AdjustPage = () => {
                 <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
                   {config.description}
                 </Text>
-                <input
-                  type="range"
+                <Slider
                   min={config.min}
                   max={config.max}
                   step={config.step}
                   value={temperatures[config.key]}
-                  onChange={(e: any) => handleTemperatureChange(config.key, Number(e.target.value))}
+                  onChange={(value: any) => handleTemperatureChange(config.key, Number(value))}
                   style={{
                     width: '100%',
-                    height: '6px',
-                    borderRadius: '3px',
-                    backgroundColor: '#E2E8F0',
-                    outline: 'none',
-                    appearance: 'none'
+                    height: '6px'
                   }}
+                  activeColor="#6366F1"
+                  backgroundColor="#E2E8F0"
+                  block-size={18}
                 />
                 <View style={{
                   display: 'flex',
