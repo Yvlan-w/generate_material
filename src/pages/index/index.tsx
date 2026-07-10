@@ -1131,7 +1131,7 @@ const GalleryPage = () => {
                       }}
                       onClick={(e) => { e.stopPropagation(); handleToggleFavorite(image.id); }}
                     >
-                      <Star size={16} color={image.isFavorite ? '#FBBF24' : '#FFFFFF'} />
+                      <Star size={16} color={image.isFavorite ? '#FBBF24' : '#FFFFFF'} style={{ opacity: image.isFavorite ? 1 : 0.6 }} />
                     </View>
                   </View>
                   <View style={{ padding: '12px' }}>

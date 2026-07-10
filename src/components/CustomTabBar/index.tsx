@@ -40,11 +40,7 @@ const CustomTabBar = () => {
       text: '图库',
       icon: Image,
       iconSize: 20
-    }
-  ]
-
-  // 管理员专属 Tab（参数配置）
-  const adminTabs: TabItem[] = [
+    },
     {
       pagePath: '/pages/adjust/index',
       text: '参数配置',
@@ -54,7 +50,7 @@ const CustomTabBar = () => {
   ]
 
   // 根据权限动态生成 Tab 列表
-  const tabs = isAdmin ? [...baseTabs, ...adminTabs] : baseTabs
+  const tabs = baseTabs
 
   const handleTabClick = (tab: TabItem) => {
     if (currentPath === tab.pagePath) return
