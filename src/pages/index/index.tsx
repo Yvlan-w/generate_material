@@ -762,7 +762,7 @@ const HomePage = () => {
                           <View style={{ marginTop: '8px' }}>
                             <Text className="block text-xs text-gray-500 mb-2">自定义借鉴方面</Text>
                             <View style={{ display: 'flex', flexDirection: 'row', gap: '8px', alignItems: 'center' }}>
-                              <View style={{ flex: 1, height: '36px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px' }}>
+                              <View style={{ flex: 1, height: '36px'}}>
                                 <Input
                                   style={{ width: '100%', height: '100%', fontSize: '13px', backgroundColor: 'transparent', padding: '0 12px' }}
                                   placeholder="例如：字体、配色方案、元素布局..."
