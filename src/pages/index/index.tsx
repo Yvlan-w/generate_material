@@ -92,9 +92,11 @@ const IndexPage = () => {
     setIsAdmin(adminFlag === true);
 
     const info = Taro.getStorageSync('userInfo');
+    console.log('IndexPage: loaded userInfo from storage:', info);
     setUserInfo(info);
 
     const isLoggedIn = Taro.getStorageSync('isLoggedIn');
+    console.log('IndexPage: isLoggedIn:', isLoggedIn);
     if (!isLoggedIn) {
       Taro.redirectTo({ url: '/pages/login/index' });
       return;
@@ -1204,31 +1206,52 @@ interface AdjustPageProps {
 }
 
 const AdjustPage = ({ userInfo }: AdjustPageProps) => {
-  const [temperatures, setTemperatures] = useState({
-    extractNeeds: 0.3,
-    generatePrompts: 0.7,
-    generateImage: 0.7
-  });
+  const [extractNeeds, setExtractNeeds] = useState(0.3);
+  const [generatePrompts, setGeneratePrompts] = useState(0.7);
+  const [generateImage, setGenerateImage] = useState(0.7);
   const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
-    const savedTemps = Taro.getStorageSync('temperatures');
-    if (savedTemps) {
-      setTemperatures(savedTemps);
+    try {
+      const saved = Taro.getStorageSync('temperatures');
+      if (saved && typeof saved === 'object') {
+        if (typeof saved.extractNeeds === 'number') setExtractNeeds(saved.extractNeeds);
+        if (typeof saved.generatePrompts === 'number') setGeneratePrompts(saved.generatePrompts);
+        if (typeof saved.generateImage === 'number') setGenerateImage(saved.generateImage);
+      }
+    } catch (e) {
+      console.error('Failed to load temperatures:', e);
     }
   }, []);
 
-  const handleTemperatureChange = (key: keyof typeof temperatures, value: number | { detail: { value: number } }) => {
-    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures[key]) : Number(value);
-    console.log('handleTemperatureChange', key, 'raw value:', value, 'numValue:', numValue);
-    if (isNaN(numValue)) {
-      console.warn('handleTemperatureChange: NaN value');
-      return;
-    }
-    const newTemps = { ...temperatures, [key]: numValue };
-    console.log('handleTemperatureChange: setting newTemps', newTemps);
-    setTemperatures(newTemps);
-    Taro.setStorageSync('temperatures', newTemps);
+  const saveTemperatures = () => {
+    const temps = { extractNeeds, generatePrompts, generateImage };
+    Taro.setStorageSync('temperatures', temps);
+    console.log('Saved temperatures:', temps);
+  };
+
+  const handleExtractNeedsChange = (value: any) => {
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? extractNeeds * 100) : Number(value);
+    const finalValue = numValue / 100;
+    console.log('extractNeeds changed:', finalValue);
+    setExtractNeeds(finalValue);
+    saveTemperatures();
+  };
+
+  const handleGeneratePromptsChange = (value: any) => {
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? generatePrompts * 100) : Number(value);
+    const finalValue = numValue / 100;
+    console.log('generatePrompts changed:', finalValue);
+    setGeneratePrompts(finalValue);
+    saveTemperatures();
+  };
+
+  const handleGenerateImageChange = (value: any) => {
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? generateImage * 100) : Number(value);
+    const finalValue = numValue / 100;
+    console.log('generateImage changed:', finalValue);
+    setGenerateImage(finalValue);
+    saveTemperatures();
   };
 
   const handleClearImages = async () => {
@@ -1266,40 +1289,9 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
     });
   };
 
-  const temperatureConfigs = [
-    {
-      key: 'extractNeeds' as const,
-      name: '理解精准度',
-      description: '控制AI理解您需求的精准程度，数值越低越严格按您的描述执行，数值越高越可能发挥创意',
-      defaultValue: 0.3,
-      min: 0.2,
-      max: 0.4,
-      step: 0.01
-    },
-    {
-      key: 'generatePrompts' as const,
-      name: '创意丰富度',
-      description: '控制提示词生成的创意程度，数值越高提示词越丰富多样，数值越低越简洁直白',
-      defaultValue: 0.7,
-      min: 0.6,
-      max: 0.8,
-      step: 0.01
-    },
-    {
-      key: 'generateImage' as const,
-      name: '风格自由度',
-      description: '控制图片生成的风格自由度，数值越高画面风格变化越大，数值越低越贴近参考风格',
-      defaultValue: 0.7,
-      min: 0.6,
-      max: 0.8,
-      step: 0.01
-    }
-  ];
-
   return (
     <View className="min-h-screen bg-gray-50 pb-24">
-      <ScrollArea>
-        <View style={{ padding: '16px' }}>
+      <View style={{ padding: '16px', paddingBottom: '80px' }}>
           <View style={{
             backgroundColor: '#FFFFFF',
             borderRadius: '16px',
@@ -1362,8 +1354,7 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
               <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1E293B' }}>生成参数调整</Text>
             </View>
 
-            {temperatureConfigs.map((config) => (
-              <View key={config.key} style={{ marginBottom: '20px' }}>
+            <View style={{ marginBottom: '20px' }}>
                 <View style={{
                   display: 'flex',
                   flexDirection: 'row',
@@ -1371,42 +1362,96 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
                   justifyContent: 'space-between',
                   marginBottom: '8px'
                 }}>
-                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>{config.name}</Text>
+                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>理解精准度</Text>
                   <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
-                    {temperatures[config.key].toFixed(2)}
+                    {extractNeeds.toFixed(2)}
                   </Text>
                 </View>
                 <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
-                  {config.description}
+                  控制AI理解您需求的精准程度，数值越低越严格按您的描述执行，数值越高越可能发挥创意
                 </Text>
                 <Slider
-                  min={config.min * 100}
-                  max={config.max * 100}
-                  step={config.step * 100}
-                  value={temperatures[config.key] * 100}
-                  onChange={(value: any) => {
-                    const sliderValue = typeof value === 'object' ? (value.detail?.value ?? temperatures[config.key] * 100) : Number(value);
-                    handleTemperatureChange(config.key, sliderValue / 100);
-                  }}
-                  style={{
-                    width: '100%',
-                    height: '6px'
-                  }}
+                  min={20}
+                  max={40}
+                  step={1}
+                  value={extractNeeds * 100}
+                  onChange={handleExtractNeedsChange}
+                  style={{ width: '100%', height: '6px' }}
                   activeColor="#6366F1"
                   backgroundColor="#E2E8F0"
-                  block-size={18}
+                  blockSize={18}
                 />
+                <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.2</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.4</Text>
+                </View>
+              </View>
+
+              <View style={{ marginBottom: '20px' }}>
                 <View style={{
                   display: 'flex',
                   flexDirection: 'row',
+                  alignItems: 'center',
                   justifyContent: 'space-between',
-                  marginTop: '8px'
+                  marginBottom: '8px'
                 }}>
-                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{config.min}</Text>
-                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{config.max}</Text>
+                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>创意丰富度</Text>
+                  <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
+                    {generatePrompts.toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
+                  控制提示词生成的创意程度，数值越高提示词越丰富多样，数值越低越简洁直白
+                </Text>
+                <Slider
+                  min={60}
+                  max={80}
+                  step={1}
+                  value={generatePrompts * 100}
+                  onChange={handleGeneratePromptsChange}
+                  style={{ width: '100%', height: '6px' }}
+                  activeColor="#6366F1"
+                  backgroundColor="#E2E8F0"
+                  blockSize={18}
+                />
+                <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.6</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.8</Text>
                 </View>
               </View>
-            ))}
+
+              <View style={{ marginBottom: '20px' }}>
+                <View style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
+                }}>
+                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>风格自由度</Text>
+                  <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
+                    {generateImage.toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
+                  控制图片生成的风格自由度，数值越高画面风格变化越大，数值越低越贴近参考风格
+                </Text>
+                <Slider
+                  min={60}
+                  max={80}
+                  step={1}
+                  value={generateImage * 100}
+                  onChange={handleGenerateImageChange}
+                  style={{ width: '100%', height: '6px' }}
+                  activeColor="#6366F1"
+                  backgroundColor="#E2E8F0"
+                  blockSize={18}
+                />
+                <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.6</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.8</Text>
+                </View>
+              </View>
           </View>
 
           <View style={{
@@ -1436,7 +1481,6 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
             </Text>
           </View>
         </View>
-      </ScrollArea>
     </View>
   );
 };
