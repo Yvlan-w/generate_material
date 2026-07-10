@@ -30,6 +30,11 @@ export class ImageController {
     imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>;
     referenceImages?: Array<{ url: string; aspects?: string[] }>;
     includedImages?: Array<{ url: string; position?: string; note?: string }>;
+    temperatures?: {
+      extractNeeds?: number;
+      generatePrompts?: number;
+      generateImage?: number;
+    };
   }) {
     console.log('[API] Chat request:', body);
     
@@ -42,7 +47,8 @@ export class ImageController {
       body.imageUrls,
       body.imageDetails,
       body.referenceImages,
-      body.includedImages
+      body.includedImages,
+      body.temperatures
     );
     
     return {
@@ -127,6 +133,23 @@ export class ImageController {
     console.log('[API] Favorite request:', body);
     
     const result = await this.imageService.toggleFavorite(body.imageId);
+    
+    return {
+      code: 200,
+      msg: 'success',
+      data: result
+    };
+  }
+
+  /**
+   * 清空用户图片接口
+   * POST /api/image/clear
+   */
+  @Post('clear')
+  async clearUserImages(@Body() body: { userId: string }) {
+    console.log('[API] Clear images request:', body);
+    
+    const result = await this.imageService.clearUserImages(body.userId);
     
     return {
       code: 200,

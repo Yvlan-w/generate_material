@@ -213,10 +213,12 @@ const HomePage = () => {
     try {
       const userInfo = Taro.getStorageSync('userInfo');
       const userId = userInfo?.id || '';
+      const savedTemps = Taro.getStorageSync('temperatures');
       const requestData: Record<string, any> = {
         sessionId: sessionState.sessionId,
         message: userMessage.content,
-        userId
+        userId,
+        temperatures: savedTemps
       };
 
       if (imagesToSend.length > 0) {
@@ -1196,205 +1198,163 @@ const GalleryPage = () => {
 };
 
 const AdjustPage = () => {
-  const [params, setParams] = useState<ParamConfig[]>([]);
-  const [modifiedParams, setModifiedParams] = useState<Record<string, number>>({});
-  const [pendingImage, setPendingImage] = useState<{ imageId: string; imageUrl: string } | null>(null);
-  const [adjustedUrl, setAdjustedUrl] = useState<string>('');
-  const [, setLoading] = useState(false);
-  const [adjusting, setAdjusting] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string>('');
-  const [showPreview, setShowPreview] = useState(false);
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [temperatures, setTemperatures] = useState({
+    extractNeeds: 0.3,
+    generatePrompts: 0.7,
+    generateImage: 0.7
+  });
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
-    fetchParams();
-    fetchPendingImage();
+    const info = Taro.getStorageSync('userInfo');
+    setUserInfo(info);
+    
+    const savedTemps = Taro.getStorageSync('temperatures');
+    if (savedTemps) {
+      setTemperatures(savedTemps);
+    }
   }, []);
 
-  const fetchParams = async () => {
-    try {
-      setLoading(true);
-      const response = await Network.request({
-        url: '/api/config/params',
-        method: 'GET'
-      });
-
-      if (response.data.code === 200) {
-        const paramsData = response.data.data?.params || response.data.data || [];
-        setParams(paramsData);
-
-        const initialModified: Record<string, number> = {};
-        paramsData.forEach((param: ParamConfig) => {
-          initialModified[param.param_name] = param.param_value;
-        });
-        setModifiedParams(initialModified);
-      }
-    } catch (error) {
-      console.error('获取参数配置失败:', error);
-      Taro.showToast({ title: '获取参数失败', icon: 'error' });
-    } finally {
-      setLoading(false);
-    }
+  const handleTemperatureChange = (key: keyof typeof temperatures, value: number) => {
+    const newTemps = { ...temperatures, [key]: value };
+    setTemperatures(newTemps);
+    Taro.setStorageSync('temperatures', newTemps);
   };
 
-  const fetchPendingImage = async () => {
-    try {
-      const response = await Network.request({
-        url: '/api/image/pending',
-        method: 'GET'
-      });
-
-      if (response.data.code === 200 && response.data.data) {
-        setPendingImage({
-          imageId: response.data.data.id,
-          imageUrl: response.data.data.image_url
-        });
-      }
-    } catch (error) {
-      console.error('获取待处理图片失败:', error);
-    }
-  };
-
-  const handleParamChange = (paramName: string, value: number) => {
-    setModifiedParams(prev => ({
-      ...prev,
-      [paramName]: value
-    }));
-  };
-
-  const handleApplyAdjustment = async () => {
-    if (!pendingImage) {
-      Taro.showToast({ title: '请先从图库选择图片', icon: 'none' });
+  const handleClearImages = async () => {
+    if (!userInfo?.id) {
+      Taro.showToast({ title: '请先登录', icon: 'none' });
       return;
     }
-    try {
-      setAdjusting(true);
-      const styleType = modifiedParams.style_type ?? modifiedParams.styleType;
-      const colorTone = modifiedParams.color_tone ?? modifiedParams.colorTone;
-      const brightness = modifiedParams.brightness ?? modifiedParams.brightness_value ?? 0;
-      const contrast = modifiedParams.contrast ?? modifiedParams.contrast_value ?? 0;
 
-      const response = await Network.request({
-        url: '/api/image/adjust',
-        method: 'POST',
-        data: {
-          imageId: pendingImage.imageId,
-          imageUrl: pendingImage.imageUrl,
-          params: {
-            styleType: styleType ? String(styleType) : undefined,
-            colorTone: colorTone ? String(colorTone) : undefined,
-            brightness: Number(brightness) || 0,
-            contrast: Number(contrast) || 0,
-          },
-        },
-      });
+    Taro.showModal({
+      title: '确认清空',
+      content: '确定要清空您所有生成的图片吗？此操作不可恢复。',
+      success: async (res) => {
+        if (res.confirm) {
+          try {
+            setClearing(true);
+            const response = await Network.request({
+              url: '/api/image/clear',
+              method: 'POST',
+              data: { userId: userInfo.id }
+            });
 
-      if (response.data?.code === 200 && response.data.data?.imageUrl) {
-        setAdjustedUrl(response.data.data.imageUrl);
-        Taro.showToast({ title: '已生成微调版本', icon: 'success' });
-      } else {
-        Taro.showToast({ title: '微调失败', icon: 'error' });
+            if (response.data.code === 200) {
+              Taro.showToast({ title: '图片已清空', icon: 'success' });
+            } else {
+              Taro.showToast({ title: '清空失败', icon: 'error' });
+            }
+          } catch (error) {
+            console.error('清空失败:', error);
+            Taro.showToast({ title: '网络异常', icon: 'error' });
+          } finally {
+            setClearing(false);
+          }
+        }
       }
-    } catch (error) {
-      console.error('微调失败:', error);
-      Taro.showToast({ title: '网络异常', icon: 'error' });
-    } finally {
-      setAdjusting(false);
-    }
+    });
   };
 
-  const handleReset = () => {
-    const resetParams: Record<string, number> = {};
-    params.forEach((param) => {
-      resetParams[param.param_name] = param.param_value;
-    });
-    setModifiedParams(resetParams);
-    setAdjustedUrl('');
-  };
+  const temperatureConfigs = [
+    {
+      key: 'extractNeeds' as const,
+      name: '理解精准度',
+      description: '控制AI理解您需求的精准程度，数值越低越严格按您的描述执行，数值越高越可能发挥创意',
+      defaultValue: 0.3,
+      min: 0.2,
+      max: 0.4,
+      step: 0.01
+    },
+    {
+      key: 'generatePrompts' as const,
+      name: '创意丰富度',
+      description: '控制提示词生成的创意程度，数值越高提示词越丰富多样，数值越低越简洁直白',
+      defaultValue: 0.7,
+      min: 0.6,
+      max: 0.8,
+      step: 0.01
+    },
+    {
+      key: 'generateImage' as const,
+      name: '风格自由度',
+      description: '控制图片生成的风格自由度，数值越高画面风格变化越大，数值越低越贴近参考风格',
+      defaultValue: 0.7,
+      min: 0.6,
+      max: 0.8,
+      step: 0.01
+    }
+  ];
 
   return (
     <View className="min-h-screen bg-gray-50 pb-20">
       <ScrollArea style={{ height: 'calc(100vh - 80px)' }}>
         <View style={{ padding: '16px' }}>
           <View style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginBottom: '20px'
+            backgroundColor: '#FFFFFF',
+            borderRadius: '16px',
+            padding: '16px',
+            marginBottom: '16px',
+            border: '1px solid #E2E8F0'
           }}>
-            <Settings size={20} color="#1E40AF" style={{ marginRight: '8px' }} />
-            <Text style={{ fontSize: '18px', fontWeight: '600', color: '#1E293B' }}>参数配置</Text>
+            <View style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center'
+            }}>
+              <View style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: '#E0E7FF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: '12px'
+              }}>
+                {userInfo?.avatarUrl ? (
+                  <Image
+                    src={userInfo.avatarUrl}
+                    mode="aspectFill"
+                    style={{ width: '100%', height: '100%', borderRadius: '50%' }}
+                  />
+                ) : (
+                  <Text style={{ fontSize: '18px', color: '#6366F1', fontWeight: '600' }}>
+                    {userInfo?.nickName?.charAt(0) || '用'}
+                  </Text>
+                )}
+              </View>
+              <View>
+                <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1E293B' }}>
+                  {userInfo?.nickName || '未登录'}
+                </Text>
+                <Text style={{ fontSize: '12px', color: '#64748B', marginTop: '4px', display: 'block' }}>
+                  {userInfo?.id ? `用户ID: ${userInfo.id.substring(0, 8)}...` : '请登录以使用完整功能'}
+                </Text>
+              </View>
+            </View>
           </View>
-
-          {pendingImage && (
-            <View style={{
-              backgroundColor: '#FFFFFF',
-              borderRadius: '16px',
-              padding: '16px',
-              marginBottom: '20px',
-              border: '1px solid #E2E8F0'
-            }}>
-              <Text style={{
-                fontSize: '14px',
-                color: '#64748B',
-                marginBottom: '12px',
-                display: 'block'
-              }}>待处理图片</Text>
-              <Image
-                src={pendingImage.imageUrl}
-                mode="widthFix"
-                style={{
-                  width: '100%',
-                  borderRadius: '12px',
-                  maxHeight: '200px',
-                  objectFit: 'contain'
-                }}
-                onClick={() => {
-                  setPreviewImage(pendingImage.imageUrl);
-                  setShowPreview(true);
-                }}
-              />
-            </View>
-          )}
-
-          {adjustedUrl && (
-            <View style={{
-              backgroundColor: '#ECFDF5',
-              borderRadius: '16px',
-              padding: '16px',
-              marginBottom: '20px',
-              border: '1px solid #A7F3D0'
-            }}>
-              <Text style={{
-                fontSize: '14px',
-                color: '#059669',
-                marginBottom: '12px',
-                display: 'block'
-              }}>微调结果</Text>
-              <Image
-                src={adjustedUrl}
-                mode="widthFix"
-                style={{
-                  width: '100%',
-                  borderRadius: '12px',
-                  maxHeight: '200px',
-                  objectFit: 'contain'
-                }}
-                onClick={() => {
-                  setPreviewImage(adjustedUrl);
-                  setShowPreview(true);
-                }}
-              />
-            </View>
-          )}
 
           <View style={{
             backgroundColor: '#FFFFFF',
             borderRadius: '16px',
             padding: '20px',
-            border: '1px solid #E2E8F0'
+            border: '1px solid #E2E8F0',
+            marginBottom: '16px'
           }}>
-            {params.map((param) => (
-              <View key={param.param_name} style={{ marginBottom: '20px' }}>
+            <View style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: '16px'
+            }}>
+              <Settings size={20} color="#1E40AF" style={{ marginRight: '8px' }} />
+              <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1E293B' }}>生成参数调整</Text>
+            </View>
+
+            {temperatureConfigs.map((config) => (
+              <View key={config.key} style={{ marginBottom: '20px' }}>
                 <View style={{
                   display: 'flex',
                   flexDirection: 'row',
@@ -1402,18 +1362,21 @@ const AdjustPage = () => {
                   justifyContent: 'space-between',
                   marginBottom: '8px'
                 }}>
-                  <Text style={{ fontSize: '14px', color: '#334155' }}>{param.description}</Text>
-                  <Text style={{ fontSize: '14px', color: '#64748B' }}>
-                    {modifiedParams[param.param_name] ?? param.param_value}
+                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>{config.name}</Text>
+                  <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
+                    {temperatures[config.key].toFixed(2)}
                   </Text>
                 </View>
+                <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
+                  {config.description}
+                </Text>
                 <input
                   type="range"
-                  min={param.min_value}
-                  max={param.max_value}
-                  step={param.step}
-                  value={modifiedParams[param.param_name] ?? param.param_value}
-                  onChange={(e: any) => handleParamChange(param.param_name, Number(e.target.value))}
+                  min={config.min}
+                  max={config.max}
+                  step={config.step}
+                  value={temperatures[config.key]}
+                  onChange={(e: any) => handleTemperatureChange(config.key, Number(e.target.value))}
                   style={{
                     width: '100%',
                     height: '6px',
@@ -1427,57 +1390,43 @@ const AdjustPage = () => {
                   display: 'flex',
                   flexDirection: 'row',
                   justifyContent: 'space-between',
-                  marginTop: '4px'
+                  marginTop: '8px'
                 }}>
-                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{param.min_value}</Text>
-                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{param.max_value}</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{config.min}</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>{config.max}</Text>
                 </View>
               </View>
             ))}
           </View>
 
           <View style={{
-            display: 'flex',
-            flexDirection: 'row',
-            gap: '12px',
-            marginTop: '20px'
+            backgroundColor: '#FEF2F2',
+            borderRadius: '16px',
+            padding: '20px',
+            border: '1px solid #FECACA'
           }}>
+            <Text style={{ fontSize: '14px', color: '#DC2626', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
+              危险操作
+            </Text>
             <Button
+              size="lg"
+              variant="outline"
+              onClick={handleClearImages}
+              disabled={clearing}
               style={{
-                flex: 1,
-                backgroundColor: '#F1F5F9',
-                borderRadius: '12px',
-                height: '44px'
+                width: '100%',
+                borderColor: '#DC2626',
+                color: '#DC2626'
               }}
-              onClick={handleReset}
             >
-              <Text style={{ fontSize: '14px', color: '#64748B' }}>重置</Text>
+              <Text style={{ color: '#DC2626' }}>{clearing ? '清空中...' : '清空我的所有图片'}</Text>
             </Button>
-            <Button
-              style={{
-                flex: 1,
-                backgroundColor: '#1E40AF',
-                borderRadius: '12px',
-                height: '44px'
-              }}
-              onClick={handleApplyAdjustment}
-              disabled={adjusting}
-            >
-              {adjusting ? (
-                <LoaderCircle size={16} color="#fff" style={{ animation: 'spin 1s linear infinite' }} />
-              ) : (
-                <Text style={{ fontSize: '14px', color: '#fff' }}>应用微调</Text>
-              )}
-            </Button>
+            <Text style={{ fontSize: '12px', color: '#F87171', marginTop: '8px', display: 'block' }}>
+              此操作将删除您所有生成的图片，无法恢复，请谨慎操作
+            </Text>
           </View>
         </View>
       </ScrollArea>
-
-      <ImagePreview
-        imageUrl={previewImage}
-        visible={showPreview}
-        onClose={() => setShowPreview(false)}
-      />
     </View>
   );
 };

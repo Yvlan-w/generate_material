@@ -16,6 +16,11 @@ export interface SessionData {
   complianceResult?: ComplianceResult;
   generatedImage?: string;
   collectedFields: Set<string>;
+  temperatures?: {
+    extractNeeds?: number;
+    generatePrompts?: number;
+    generateImage?: number;
+  };
 }
 
 export interface ReferenceImage {
@@ -176,7 +181,7 @@ export class ImageService {
    * 多轮对话接口 - 需求收集Agent
    * 根据当前状态决定下一步行动
    */
-  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>, referenceImages?: Array<{ url: string; aspects?: string[] }>, includedImages?: Array<{ url: string; position?: string; note?: string }>): Promise<ChatResponse> {
+  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>, referenceImages?: Array<{ url: string; aspects?: string[] }>, includedImages?: Array<{ url: string; position?: string; note?: string }>, temperatures?: { extractNeeds?: number; generatePrompts?: number; generateImage?: number }): Promise<ChatResponse> {
     console.log(`\n===========================================`);
     console.log(`[Chat] NEW REQUEST`);
     console.log(`[Chat] Session: ${sessionId}`);
@@ -199,13 +204,17 @@ export class ImageService {
         userId,
         stage: 'collecting',
         messages: [],
-        collectedFields: new Set()
+        collectedFields: new Set(),
+        temperatures
       };
       this.sessions.set(sessionId, session);
     } else {
       console.log(`[Chat] Found existing session`);
       console.log(`[Chat] Session collectedFields: ${Array.from(session.collectedFields)}`);
       console.log(`[Chat] Session structuredNeeds:`, JSON.stringify(session.structuredNeeds));
+      if (temperatures) {
+        session.temperatures = temperatures;
+      }
     }
     
     // 处理图片上传（新接口：同时支持参考图片和素材图片）
@@ -540,7 +549,7 @@ export class ImageService {
 
       // 生成正负提示词
       console.log(`[Generation] Step 3: Generating prompts...`);
-      const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds!);
+      const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds!, session.temperatures?.generatePrompts);
       console.log(`[Generation] Positive prompt: "${positivePrompt.substring(0, 100)}..."`);
       console.log(`[Generation] Negative prompt: "${negativePrompt}"`);
 
@@ -550,6 +559,7 @@ export class ImageService {
         positivePrompt,
         negativePrompt,
         session.structuredNeeds,
+        session.temperatures?.generateImage,
       );
       console.log(`[Generation] Image generated: "${imageUrl}"`);
       session.generatedImage = imageUrl;
@@ -691,9 +701,11 @@ ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
 {"theme":"品牌宣传","colorTone":"蓝色","style":"专业稳重","targetAudience":"高净值客户","usage":"朋友圈","size":"1:1","otherRequirements":"希望整体感觉更加大气，不要太花哨","referenceImages":[{"url":"https://example.com/ref1.jpg","aspects":["色调","构图"]}],"includedElements":[{"type":"text","value":"公司logo","position":"左上角"},{"type":"image","value":"https://example.com/element1.jpg","position":"底部居中"}]}`;
 
     console.log(`[Extract] Calling LLM for extraction...`);
+    const extractTemp = session.temperatures?.extractNeeds ?? 0.3;
+    console.log(`[Extract] Using temperature: ${extractTemp}`);
     const response = await this.llmClient.invoke(
       [{ role: 'user', content: extractPrompt }],
-      { model: 'doubao-seed-2-0-lite-260215', temperature: 0.3 }
+      { model: 'doubao-seed-2-0-lite-260215', temperature: extractTemp }
     );
     
     console.log(`[Extract] LLM raw response: "${response.content}"`);
@@ -824,7 +836,7 @@ ${needsText}
   /**
    * 生成正负提示词（基于全部已收集字段）
    */
-  private async generatePrompts(needs: StructuredNeeds): Promise<{ positivePrompt: string; negativePrompt: string }> {
+  private async generatePrompts(needs: StructuredNeeds, temperature?: number): Promise<{ positivePrompt: string; negativePrompt: string }> {
     console.log('[Prompts] 生成正负提示词');
 
     const needsText = formatNeedsForPrompt(needs);
@@ -893,9 +905,11 @@ ${includedElementsHint}
   "negativePrompt": "以逗号分隔的禁用元素列表"
 }`;
 
+    const promptTemp = temperature ?? 0.7;
+    console.log(`[Prompts] Using temperature: ${promptTemp}`);
     const response = await this.llmClient.invoke(
       [{ role: 'user', content: promptGenerator }],
-      { model: 'doubao-seed-2-0-lite-260215', temperature: 0.7 }
+      { model: 'doubao-seed-2-0-lite-260215', temperature: promptTemp }
     );
     
     // 解析结果
@@ -1029,6 +1043,7 @@ ${needsText}
     positivePrompt: string,
     negativePrompt: string,
     needs?: StructuredNeeds,
+    temperature?: number,
   ): Promise<string> {
     console.log('[Image] 生成图片');
     console.log('[Image] 正向提示词:', positivePrompt);
@@ -1053,13 +1068,18 @@ ${needsText}
     try {
       const finalPrompt = `${positivePrompt}，避免出现：${negativePrompt}`;
 
+      const imageTemp = temperature ?? 0.7;
+      console.log(`[Image] Using temperature: ${imageTemp}`);
+
       const generateParams: {
         prompt: string;
         size: string;
         image?: string | string[];
+        temperature?: number;
       } = {
         prompt: finalPrompt,
         size: sdkSize,
+        temperature: imageTemp,
       };
       
       const allImageUrls = [
@@ -1147,8 +1167,8 @@ ${needsText}
 
     // 3. 重新生成提示词和图片
     session.stage = 'generating';
-    const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds);
-    const imageUrl = await this.generateImageFromPrompts(positivePrompt, negativePrompt, session.structuredNeeds);
+    const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds, session.temperatures?.generatePrompts);
+    const imageUrl = await this.generateImageFromPrompts(positivePrompt, negativePrompt, session.structuredNeeds, session.temperatures?.generateImage);
     session.generatedImage = imageUrl;
 
     // 4. 保存新图片到数据库
@@ -1338,6 +1358,39 @@ ${formatNeedsForPrompt(currentNeeds)}
       return {
         success: false,
         isFavorite: false
+      };
+    }
+  }
+
+  /**
+   * 清空用户所有图片
+   */
+  async clearUserImages(userId: string) {
+    console.log('[Clear] 清空用户图片, userId:', userId);
+    
+    try {
+      const supabase = getSupabaseClient();
+      
+      const { error } = await supabase
+        .from('generated_images')
+        .delete()
+        .eq('user_id', userId);
+      
+      if (error) {
+        console.error('[Clear] 删除失败:', error);
+        throw error;
+      }
+      
+      console.log('[Clear] 用户图片清空成功');
+      return {
+        success: true,
+        message: '用户图片已清空'
+      };
+    } catch (e) {
+      console.error('[Clear] 清空异常:', e);
+      return {
+        success: false,
+        message: '清空失败'
       };
     }
   }
