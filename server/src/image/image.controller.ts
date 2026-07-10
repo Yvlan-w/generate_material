@@ -119,6 +119,23 @@ export class ImageController {
   }
 
   /**
+   * 切换图片收藏接口
+   * POST /api/image/favorite
+   */
+  @Post('favorite')
+  async toggleFavorite(@Body() body: { imageId: string }) {
+    console.log('[API] Favorite request:', body);
+    
+    const result = await this.imageService.toggleFavorite(body.imageId);
+    
+    return {
+      code: 200,
+      msg: 'success',
+      data: result
+    };
+  }
+
+  /**
    * 图片微调接口
    * POST /api/image/adjust
    */

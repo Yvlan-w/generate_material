@@ -76,6 +76,7 @@ export const generatedImages = pgTable(
 		image_url: varchar("image_url", { length: 500 }),  // TOS 图片 URL
 		status: varchar("status", { length: 20 }).default("pending").notNull(),  // pending/compliant/rejected
 		compliance_note: text("compliance_note"),  // 合规检查备注
+		is_favorite: boolean("is_favorite").default(false).notNull(),  // 是否收藏
 		created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 		updated_at: timestamp("updated_at", { withTimezone: true }),
 	},
@@ -83,5 +84,6 @@ export const generatedImages = pgTable(
 		index("generated_images_user_id_idx").on(table.user_id),
 		index("generated_images_status_idx").on(table.status),
 		index("generated_images_created_at_idx").on(table.created_at),
+		index("generated_images_is_favorite_idx").on(table.is_favorite),
 	]
 );

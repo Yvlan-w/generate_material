@@ -1259,6 +1259,8 @@ ${formatNeedsForPrompt(currentNeeds)}
         query = query.eq('status', 'compliant');
       } else if (filter === 'pending' || filter === '待审核') {
         query = query.eq('status', 'pending');
+      } else if (filter === 'favorite' || filter === '已收藏') {
+        query = query.eq('is_favorite', true);
       }
       
       const { data, error } = await query.limit(50);
@@ -1280,7 +1282,8 @@ ${formatNeedsForPrompt(currentNeeds)}
         url: img.image_url,
         prompt: img.prompt,
         positive_prompt: img.positive_prompt,
-        negative_prompt: img.negative_prompt
+        negative_prompt: img.negative_prompt,
+        isFavorite: img.is_favorite || false
       }));
       
       console.log('[List] 查询到图片数量:', images.length);
@@ -1288,6 +1291,54 @@ ${formatNeedsForPrompt(currentNeeds)}
     } catch (e) {
       console.error('[List] 查询异常:', e);
       return [];
+    }
+  }
+
+  /**
+   * 切换图片收藏状态
+   */
+  async toggleFavorite(imageId: string) {
+    console.log('[Favorite] 切换收藏状态, imageId:', imageId);
+    
+    try {
+      const supabase = getSupabaseClient();
+      
+      // 先查询当前状态
+      const { data: currentData, error: fetchError } = await supabase
+        .from('generated_images')
+        .select('is_favorite')
+        .eq('id', imageId)
+        .single();
+      
+      if (fetchError) {
+        console.error('[Favorite] 查询失败:', fetchError);
+        throw fetchError;
+      }
+      
+      const newFavoriteState = !currentData?.is_favorite;
+      
+      // 更新收藏状态
+      const { error: updateError } = await supabase
+        .from('generated_images')
+        .update({ is_favorite: newFavoriteState })
+        .eq('id', imageId);
+      
+      if (updateError) {
+        console.error('[Favorite] 更新失败:', updateError);
+        throw updateError;
+      }
+      
+      console.log('[Favorite] 收藏状态更新成功, newState:', newFavoriteState);
+      return {
+        success: true,
+        isFavorite: newFavoriteState
+      };
+    } catch (e) {
+      console.error('[Favorite] 切换收藏异常:', e);
+      return {
+        success: false,
+        isFavorite: false
+      };
     }
   }
   

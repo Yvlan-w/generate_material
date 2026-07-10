@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, TriangleAlert, Check, LoaderCircle, Image as ImageIcon, House, Settings, RefreshCw, ImageOff } from 'lucide-react-taro';
+import { Send, TriangleAlert, Check, LoaderCircle, Image as ImageIcon, House, Settings, RefreshCw, ImageOff, Star } from 'lucide-react-taro';
 import ImagePreview from '@/components/ImagePreview';
 import './index.css';
 
@@ -70,6 +70,7 @@ interface GalleryImage {
   status: string;
   time: string;
   needs?: any;
+  isFavorite?: boolean;
 }
 
 interface ParamConfig {
@@ -928,17 +929,20 @@ const GalleryPage = () => {
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'favorite'>('all');
 
   useEffect(() => {
     loadImages();
-  }, []);
+  }, [activeTab]);
 
   const loadImages = async () => {
     setLoading(true);
     try {
       const userInfo = Taro.getStorageSync('userInfo');
       const userId = userInfo?.id || '';
-      const requestData: Record<string, any> = {};
+      const requestData: Record<string, any> = {
+        filter: activeTab === 'favorite' ? 'favorite' : ''
+      };
       if (userId) {
         requestData.userId = userId;
       }
@@ -955,13 +959,33 @@ const GalleryPage = () => {
           url: img.url,
           status: img.status || '合规通过',
           time: img.time || '',
-          needs: img.prompt || img.description || ''
+          needs: img.prompt || img.description || '',
+          isFavorite: img.isFavorite || false
         })));
       }
     } catch (error) {
       console.error('获取图片列表失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleFavorite = async (imageId: string) => {
+    try {
+      const response = await Network.request({
+        url: '/api/image/favorite',
+        method: 'POST',
+        data: { imageId }
+      });
+
+      if (response.data.code === 200) {
+        const { isFavorite } = response.data.data;
+        setImages(prev => prev.map(img => 
+          img.id === imageId ? { ...img, isFavorite } : img
+        ));
+      }
+    } catch (error) {
+      console.error('切换收藏失败:', error);
     }
   };
 
@@ -977,7 +1001,55 @@ const GalleryPage = () => {
   return (
     <View className="min-h-screen bg-gray-50 pb-20">
       <ScrollArea style={{ height: 'calc(100vh - 80px)' }}>
-        <View style={{ padding: '16px' }}>
+        <View style={{ padding: '16px', paddingBottom: '8px' }}>
+          <View style={{
+            display: 'flex',
+            flexDirection: 'row',
+            backgroundColor: '#F1F5F9',
+            borderRadius: '12px',
+            padding: '4px'
+          }}>
+            <View
+              style={{
+                flex: 1,
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: activeTab === 'all' ? '#FFFFFF' : 'transparent',
+                boxShadow: activeTab === 'all' ? '0 2px 4px rgba(0,0,0,0.04)' : 'none'
+              }}
+              onClick={() => setActiveTab('all')}
+            >
+              <Text style={{
+                fontSize: '14px',
+                fontWeight: activeTab === 'all' ? '500' : '400',
+                color: activeTab === 'all' ? '#1E293B' : '#64748B'
+              }}>全部</Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: activeTab === 'favorite' ? '#FFFFFF' : 'transparent',
+                boxShadow: activeTab === 'favorite' ? '0 2px 4px rgba(0,0,0,0.04)' : 'none'
+              }}
+              onClick={() => setActiveTab('favorite')}
+            >
+              <Text style={{
+                fontSize: '14px',
+                fontWeight: activeTab === 'favorite' ? '500' : '400',
+                color: activeTab === 'favorite' ? '#1E293B' : '#64748B'
+              }}>已收藏</Text>
+            </View>
+          </View>
+        </View>
+        <View style={{ padding: '0 16px' }}>
           {images.length === 0 && !loading ? (
             <View style={{
               display: 'flex',
@@ -1043,6 +1115,24 @@ const GalleryPage = () => {
                         onError={() => handleImageError(image.id)}
                       />
                     )}
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10
+                      }}
+                      onClick={(e) => { e.stopPropagation(); handleToggleFavorite(image.id); }}
+                    >
+                      <Star size={16} color={image.isFavorite ? '#FBBF24' : '#FFFFFF'} />
+                    </View>
                   </View>
                   <View style={{ padding: '12px' }}>
                     <View style={{

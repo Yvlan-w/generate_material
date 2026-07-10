@@ -132,7 +132,7 @@ const ImagePreview = ({ imageUrl, visible, onClose }: ImagePreviewProps) => {
         onClick={(e) => e.stopPropagation()}
       >
         <View
-          className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"
+          className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-sm border border-white/30"
           onClick={onClose}
         >
           <X size={20} color="#fff" />
