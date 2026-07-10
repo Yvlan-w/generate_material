@@ -110,7 +110,7 @@ const IndexPage = () => {
     <View className="min-h-screen bg-gray-50">
       {currentTab === 'home' && <HomePage />}
       {currentTab === 'gallery' && <GalleryPage />}
-      {currentTab === 'adjust' && isAdmin && <AdjustPage />}
+      {currentTab === 'adjust' && <AdjustPage />}
 
       <View
         className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-14 z-50 pb-safe"
@@ -130,15 +130,13 @@ const IndexPage = () => {
           <ImageIcon size={22} color={currentTab === 'gallery' ? '#1E40AF' : '#6B7280'} />
           <Text className="text-xs mt-1" style={{ color: currentTab === 'gallery' ? '#1E40AF' : '#6B7280' }}>图库</Text>
         </View>
-        {isAdmin && (
-          <View
+        <View
             className="flex-1 flex flex-col items-center justify-center py-1"
             onClick={() => setCurrentTab('adjust')}
           >
             <Settings size={22} color={currentTab === 'adjust' ? '#1E40AF' : '#6B7280'} />
             <Text className="text-xs mt-1" style={{ color: currentTab === 'adjust' ? '#1E40AF' : '#6B7280' }}>配置</Text>
           </View>
-        )}
       </View>
     </View>
   );

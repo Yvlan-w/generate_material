@@ -42,7 +42,7 @@ const CustomTabBar = () => {
       iconSize: 20
     },
     {
-      pagePath: '/pages/adjust/index',
+      pagePath: '/pages/index/index?tab=adjust',
       text: '参数配置',
       icon: Settings,
       iconSize: 20
