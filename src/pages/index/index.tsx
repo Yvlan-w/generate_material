@@ -1214,8 +1214,12 @@ const AdjustPage = () => {
     }
   }, []);
 
-  const handleTemperatureChange = (key: keyof typeof temperatures, value: number) => {
-    const newTemps = { ...temperatures, [key]: value };
+  const handleTemperatureChange = (key: keyof typeof temperatures, value: number | { detail: { value: number } }) => {
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures[key]) : Number(value);
+    if (isNaN(numValue)) {
+      return;
+    }
+    const newTemps = { ...temperatures, [key]: numValue };
     setTemperatures(newTemps);
     Taro.setStorageSync('temperatures', newTemps);
   };
@@ -1369,11 +1373,11 @@ const AdjustPage = () => {
                   {config.description}
                 </Text>
                 <Slider
-                  min={config.min}
-                  max={config.max}
-                  step={config.step}
-                  value={temperatures[config.key]}
-                  onChange={(value: any) => handleTemperatureChange(config.key, Number(value))}
+                  min={config.min * 100}
+                  max={config.max * 100}
+                  step={config.step * 100}
+                  value={temperatures[config.key] * 100}
+                  onChange={(value: any) => handleTemperatureChange(config.key, Number(value) / 100)}
                   style={{
                     width: '100%',
                     height: '6px'
