@@ -85,10 +85,14 @@ interface ParamConfig {
 const IndexPage = () => {
   const [currentTab, setCurrentTab] = useState<TabType>('home');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userInfo, setUserInfo] = useState<any>(null);
 
   useEffect(() => {
     const adminFlag = Taro.getStorageSync('isAdmin');
     setIsAdmin(adminFlag === true);
+
+    const info = Taro.getStorageSync('userInfo');
+    setUserInfo(info);
 
     const isLoggedIn = Taro.getStorageSync('isLoggedIn');
     if (!isLoggedIn) {
@@ -110,7 +114,7 @@ const IndexPage = () => {
     <View className="min-h-screen bg-gray-50">
       {currentTab === 'home' && <HomePage />}
       {currentTab === 'gallery' && <GalleryPage />}
-      {currentTab === 'adjust' && <AdjustPage />}
+      {currentTab === 'adjust' && <AdjustPage userInfo={userInfo} />}
 
       <View
         className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-14 z-50 pb-safe"
@@ -1195,8 +1199,11 @@ const GalleryPage = () => {
   );
 };
 
-const AdjustPage = () => {
-  const [userInfo, setUserInfo] = useState<any>(null);
+interface AdjustPageProps {
+  userInfo: any;
+}
+
+const AdjustPage = ({ userInfo }: AdjustPageProps) => {
   const [temperatures, setTemperatures] = useState({
     extractNeeds: 0.3,
     generatePrompts: 0.7,
@@ -1205,9 +1212,6 @@ const AdjustPage = () => {
   const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
-    const info = Taro.getStorageSync('userInfo');
-    setUserInfo(info);
-    
     const savedTemps = Taro.getStorageSync('temperatures');
     if (savedTemps) {
       setTemperatures(savedTemps);
@@ -1216,10 +1220,13 @@ const AdjustPage = () => {
 
   const handleTemperatureChange = (key: keyof typeof temperatures, value: number | { detail: { value: number } }) => {
     const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures[key]) : Number(value);
+    console.log('handleTemperatureChange', key, 'raw value:', value, 'numValue:', numValue);
     if (isNaN(numValue)) {
+      console.warn('handleTemperatureChange: NaN value');
       return;
     }
     const newTemps = { ...temperatures, [key]: numValue };
+    console.log('handleTemperatureChange: setting newTemps', newTemps);
     setTemperatures(newTemps);
     Taro.setStorageSync('temperatures', newTemps);
   };
@@ -1290,8 +1297,8 @@ const AdjustPage = () => {
   ];
 
   return (
-    <View className="min-h-screen bg-gray-50 pb-20">
-      <ScrollArea style={{ height: 'calc(100vh - 80px)' }}>
+    <View className="min-h-screen bg-gray-50 pb-24">
+      <ScrollArea>
         <View style={{ padding: '16px' }}>
           <View style={{
             backgroundColor: '#FFFFFF',
@@ -1377,7 +1384,10 @@ const AdjustPage = () => {
                   max={config.max * 100}
                   step={config.step * 100}
                   value={temperatures[config.key] * 100}
-                  onChange={(value: any) => handleTemperatureChange(config.key, Number(value) / 100)}
+                  onChange={(value: any) => {
+                    const sliderValue = typeof value === 'object' ? (value.detail?.value ?? temperatures[config.key] * 100) : Number(value);
+                    handleTemperatureChange(config.key, sliderValue / 100);
+                  }}
                   style={{
                     width: '100%',
                     height: '6px'
