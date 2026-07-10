@@ -44,3 +44,4 @@ pnpm-debug.log*
 
 .cozeproj/reduction
 node-compile-cache/
+.codegraph
