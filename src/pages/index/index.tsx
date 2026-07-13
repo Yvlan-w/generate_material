@@ -108,6 +108,12 @@ const IndexPage = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [editImageId, setEditImageId] = useState<string | null>(null);
 
+  const [temperatures, setTemperatures] = useState({
+    extractNeeds: 0.3,
+    generatePrompts: 0.7,
+    generateImage: 0.7
+  });
+
   useEffect(() => {
     const adminFlag = Taro.getStorageSync('isAdmin');
     setIsAdmin(adminFlag === true);
@@ -115,6 +121,17 @@ const IndexPage = () => {
     const info = Taro.getStorageSync('userInfo');
     console.log('IndexPage: loaded userInfo from storage:', info);
     setUserInfo(info);
+
+    const savedTemps = Taro.getStorageSync('temperatures');
+    if (savedTemps && typeof savedTemps === 'object') {
+      const parsedTemps = {
+        extractNeeds: typeof savedTemps.extractNeeds === 'number' ? Math.round(savedTemps.extractNeeds * 100) / 100 : 0.3,
+        generatePrompts: typeof savedTemps.generatePrompts === 'number' ? Math.round(savedTemps.generatePrompts * 100) / 100 : 0.7,
+        generateImage: typeof savedTemps.generateImage === 'number' ? Math.round(savedTemps.generateImage * 100) / 100 : 0.7
+      };
+      setTemperatures(parsedTemps);
+      console.log('IndexPage: loaded temperatures:', parsedTemps);
+    }
 
     const isLoggedIn = Taro.getStorageSync('isLoggedIn');
     console.log('IndexPage: isLoggedIn:', isLoggedIn);
@@ -174,10 +191,11 @@ const IndexPage = () => {
           editImageId={editImageId}
           setEditImageId={setEditImageId}
           handleRestartChat={handleRestartChat}
+          temperatures={temperatures}
         />
       )}
       {currentTab === 'gallery' && <GalleryPage />}
-      {currentTab === 'adjust' && <AdjustPage userInfo={userInfo} />}
+      {currentTab === 'adjust' && <AdjustPage userInfo={userInfo} temperatures={temperatures} setTemperatures={setTemperatures} />}
 
       <View
         className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-14 z-50 pb-safe"
@@ -229,6 +247,11 @@ interface HomePageProps {
   editImageId: string | null;
   setEditImageId: React.Dispatch<React.SetStateAction<string | null>>;
   handleRestartChat: () => void;
+  temperatures: {
+    extractNeeds: number;
+    generatePrompts: number;
+    generateImage: number;
+  };
 }
 
 const HomePage = ({
@@ -250,7 +273,8 @@ const HomePage = ({
   setShowPreview,
   editImageId,
   setEditImageId,
-  handleRestartChat
+  handleRestartChat,
+  temperatures
 }: HomePageProps) => {
   useEffect(() => {
     if (scrollToId) {
@@ -297,12 +321,11 @@ const HomePage = ({
     try {
       const userInfo = Taro.getStorageSync('userInfo');
       const userId = userInfo?.id || '';
-      const savedTemps = Taro.getStorageSync('temperatures');
       const requestData: Record<string, any> = {
         sessionId: sessionState.sessionId,
         message: userMessage.content,
         userId,
-        temperatures: savedTemps
+        temperatures
       };
 
       if (imagesToSend.length > 0) {
@@ -1265,55 +1288,51 @@ const GalleryPage = () => {
 
 interface AdjustPageProps {
   userInfo: any;
+  temperatures: {
+    extractNeeds: number;
+    generatePrompts: number;
+    generateImage: number;
+  };
+  setTemperatures: React.Dispatch<React.SetStateAction<{
+    extractNeeds: number;
+    generatePrompts: number;
+    generateImage: number;
+  }>>;
 }
 
-const AdjustPage = ({ userInfo }: AdjustPageProps) => {
-  const [extractNeeds, setExtractNeeds] = useState(0.3);
-  const [generatePrompts, setGeneratePrompts] = useState(0.7);
-  const [generateImage, setGenerateImage] = useState(0.7);
+const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps) => {
   const [clearing, setClearing] = useState(false);
 
-  useEffect(() => {
-    try {
-      const saved = Taro.getStorageSync('temperatures');
-      if (saved && typeof saved === 'object') {
-        if (typeof saved.extractNeeds === 'number') setExtractNeeds(saved.extractNeeds);
-        if (typeof saved.generatePrompts === 'number') setGeneratePrompts(saved.generatePrompts);
-        if (typeof saved.generateImage === 'number') setGenerateImage(saved.generateImage);
-      }
-    } catch (e) {
-      console.error('Failed to load temperatures:', e);
-    }
-  }, []);
-
-  const saveTemperatures = () => {
-    const temps = { extractNeeds, generatePrompts, generateImage };
-    Taro.setStorageSync('temperatures', temps);
-    console.log('Saved temperatures:', temps);
+  const saveTemperatures = (newTemps: typeof temperatures) => {
+    Taro.setStorageSync('temperatures', newTemps);
+    console.log('Saved temperatures:', newTemps);
   };
 
   const handleExtractNeedsChange = (value: any) => {
-    const numValue = typeof value === 'object' ? (value.detail?.value ?? extractNeeds * 100) : Number(value);
-    const finalValue = numValue / 100;
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures.extractNeeds * 100) : Number(value);
+    const finalValue = Math.round(numValue / 100 * 100) / 100;
     console.log('extractNeeds changed:', finalValue);
-    setExtractNeeds(finalValue);
-    saveTemperatures();
+    const newTemps = { ...temperatures, extractNeeds: finalValue };
+    setTemperatures(newTemps);
+    saveTemperatures(newTemps);
   };
 
   const handleGeneratePromptsChange = (value: any) => {
-    const numValue = typeof value === 'object' ? (value.detail?.value ?? generatePrompts * 100) : Number(value);
-    const finalValue = numValue / 100;
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures.generatePrompts * 100) : Number(value);
+    const finalValue = Math.round(numValue / 100 * 100) / 100;
     console.log('generatePrompts changed:', finalValue);
-    setGeneratePrompts(finalValue);
-    saveTemperatures();
+    const newTemps = { ...temperatures, generatePrompts: finalValue };
+    setTemperatures(newTemps);
+    saveTemperatures(newTemps);
   };
 
   const handleGenerateImageChange = (value: any) => {
-    const numValue = typeof value === 'object' ? (value.detail?.value ?? generateImage * 100) : Number(value);
-    const finalValue = numValue / 100;
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures.generateImage * 100) : Number(value);
+    const finalValue = Math.round(numValue / 100 * 100) / 100;
     console.log('generateImage changed:', finalValue);
-    setGenerateImage(finalValue);
-    saveTemperatures();
+    const newTemps = { ...temperatures, generateImage: finalValue };
+    setTemperatures(newTemps);
+    saveTemperatures(newTemps);
   };
 
   const handleClearImages = async () => {
@@ -1426,7 +1445,7 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
                 }}>
                   <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>理解精准度</Text>
                   <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
-                    {extractNeeds.toFixed(2)}
+                    {temperatures.extractNeeds.toFixed(2)}
                   </Text>
                 </View>
                 <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
@@ -1436,7 +1455,7 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
                   min={20}
                   max={40}
                   step={1}
-                  value={extractNeeds * 100}
+                  value={temperatures.extractNeeds * 100}
                   onChange={handleExtractNeedsChange}
                   style={{ width: '100%', height: '6px' }}
                   activeColor="#6366F1"
@@ -1459,7 +1478,7 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
                 }}>
                   <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>创意丰富度</Text>
                   <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
-                    {generatePrompts.toFixed(2)}
+                    {temperatures.generatePrompts.toFixed(2)}
                   </Text>
                 </View>
                 <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
@@ -1469,7 +1488,7 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
                   min={60}
                   max={80}
                   step={1}
-                  value={generatePrompts * 100}
+                  value={temperatures.generatePrompts * 100}
                   onChange={handleGeneratePromptsChange}
                   style={{ width: '100%', height: '6px' }}
                   activeColor="#6366F1"
@@ -1492,7 +1511,7 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
                 }}>
                   <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>风格自由度</Text>
                   <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
-                    {generateImage.toFixed(2)}
+                    {temperatures.generateImage.toFixed(2)}
                   </Text>
                 </View>
                 <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
@@ -1502,7 +1521,7 @@ const AdjustPage = ({ userInfo }: AdjustPageProps) => {
                   min={60}
                   max={80}
                   step={1}
-                  value={generateImage * 100}
+                  value={temperatures.generateImage * 100}
                   onChange={handleGenerateImageChange}
                   style={{ width: '100%', height: '6px' }}
                   activeColor="#6366F1"
