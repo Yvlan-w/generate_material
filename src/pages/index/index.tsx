@@ -87,6 +87,27 @@ const IndexPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
 
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 'init',
+      role: 'agent',
+      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？\n\n例如：品牌宣传图、团队风采展示、数据可视化图表、产品介绍海报等。',
+      timestamp: new Date(),
+      type: 'text'
+    }
+  ]);
+  const [inputValue, setInputValue] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [sessionState, setSessionState] = useState<SessionState>({
+    sessionId: `session_${Date.now()}`,
+    stage: 'collecting'
+  });
+  const [imagesToSend, setImagesToSend] = useState<PendingImage[]>([]);
+  const [scrollToId, setScrollToId] = useState<string>('');
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [editImageId, setEditImageId] = useState<string | null>(null);
+
   useEffect(() => {
     const adminFlag = Taro.getStorageSync('isAdmin');
     setIsAdmin(adminFlag === true);
@@ -112,9 +133,49 @@ const IndexPage = () => {
     }
   }, []);
 
+  const handleRestartChat = () => {
+    setMessages([{
+      id: 'init',
+      role: 'agent',
+      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？\n\n例如：品牌宣传图、团队风采展示、数据可视化图表、产品介绍海报等。',
+      timestamp: new Date(),
+      type: 'text'
+    }]);
+    setInputValue('');
+    setSessionState({
+      sessionId: `session_${Date.now()}`,
+      stage: 'collecting'
+    });
+    setImagesToSend([]);
+    setEditImageId(null);
+    Taro.showToast({ title: '已重新开始对话', icon: 'success', duration: 1500 });
+  };
+
   return (
     <View className="min-h-screen bg-gray-50">
-      {currentTab === 'home' && <HomePage />}
+      {currentTab === 'home' && (
+        <HomePage
+          messages={messages}
+          setMessages={setMessages}
+          inputValue={inputValue}
+          setInputValue={setInputValue}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          sessionState={sessionState}
+          setSessionState={setSessionState}
+          imagesToSend={imagesToSend}
+          setImagesToSend={setImagesToSend}
+          scrollToId={scrollToId}
+          setScrollToId={setScrollToId}
+          previewImage={previewImage}
+          setPreviewImage={setPreviewImage}
+          showPreview={showPreview}
+          setShowPreview={setShowPreview}
+          editImageId={editImageId}
+          setEditImageId={setEditImageId}
+          handleRestartChat={handleRestartChat}
+        />
+      )}
       {currentTab === 'gallery' && <GalleryPage />}
       {currentTab === 'adjust' && <AdjustPage userInfo={userInfo} />}
 
@@ -148,30 +209,49 @@ const IndexPage = () => {
   );
 };
 
-const HomePage = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'init',
-      role: 'agent',
-      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？\n\n例如：品牌宣传图、团队风采展示、数据可视化图表、产品介绍海报等。',
-      timestamp: new Date(),
-      type: 'text'
-    }
-  ]);
+interface HomePageProps {
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  inputValue: string;
+  setInputValue: React.Dispatch<React.SetStateAction<string>>;
+  isProcessing: boolean;
+  setIsProcessing: React.Dispatch<React.SetStateAction<boolean>>;
+  sessionState: SessionState;
+  setSessionState: React.Dispatch<React.SetStateAction<SessionState>>;
+  imagesToSend: PendingImage[];
+  setImagesToSend: React.Dispatch<React.SetStateAction<PendingImage[]>>;
+  scrollToId: string;
+  setScrollToId: React.Dispatch<React.SetStateAction<string>>;
+  previewImage: string;
+  setPreviewImage: React.Dispatch<React.SetStateAction<string>>;
+  showPreview: boolean;
+  setShowPreview: React.Dispatch<React.SetStateAction<boolean>>;
+  editImageId: string | null;
+  setEditImageId: React.Dispatch<React.SetStateAction<string | null>>;
+  handleRestartChat: () => void;
+}
 
-  const [inputValue, setInputValue] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [sessionState, setSessionState] = useState<SessionState>({
-    sessionId: `session_${Date.now()}`,
-    stage: 'collecting'
-  });
-
-  const [imagesToSend, setImagesToSend] = useState<PendingImage[]>([]);
-  const [scrollToId, setScrollToId] = useState<string>('');
-  const [previewImage, setPreviewImage] = useState<string>('');
-  const [showPreview, setShowPreview] = useState(false);
-  const [editImageId, setEditImageId] = useState<string | null>(null);
-
+const HomePage = ({
+  messages,
+  setMessages,
+  inputValue,
+  setInputValue,
+  isProcessing,
+  setIsProcessing,
+  sessionState,
+  setSessionState,
+  imagesToSend,
+  setImagesToSend,
+  scrollToId,
+  setScrollToId,
+  previewImage,
+  setPreviewImage,
+  showPreview,
+  setShowPreview,
+  editImageId,
+  setEditImageId,
+  handleRestartChat
+}: HomePageProps) => {
   useEffect(() => {
     if (scrollToId) {
       const timer = setTimeout(() => {
@@ -179,7 +259,7 @@ const HomePage = () => {
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [scrollToId]);
+  }, [scrollToId, setScrollToId]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() && imagesToSend.length === 0 || isProcessing) return;
@@ -398,24 +478,6 @@ const HomePage = () => {
 
   const clearAllPendingImages = () => {
     setImagesToSend([]);
-  };
-
-  const handleRestartChat = () => {
-    setMessages([{
-      id: 'init',
-      role: 'agent',
-      content: '您好！我是投资咨询行业营销素材生成助手。\n\n我将帮您生成符合行业规范的营销素材图片。请告诉我您希望生成什么类型的图片？\n\n例如：品牌宣传图、团队风采展示、数据可视化图表、产品介绍海报等。',
-      timestamp: new Date(),
-      type: 'text'
-    }]);
-    setInputValue('');
-    setSessionState({
-      sessionId: `session_${Date.now()}`,
-      stage: 'collecting'
-    });
-    setImagesToSend([]);
-    setEditImageId(null);
-    Taro.showToast({ title: '已重新开始对话', icon: 'success', duration: 1500 });
   };
 
   const updateImageNote = (id: string, field: 'imageType' | 'aspects' | 'position' | 'customAspect' | 'note', value: string | string[]) => {
