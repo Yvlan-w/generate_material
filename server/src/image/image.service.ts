@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { LLMClient, ImageGenerationClient, Config, S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient } from '../storage/database/supabase-client';
+import { text } from 'stream/consumers';
 
 /**
  * 对话状态定义
@@ -636,7 +637,7 @@ export class ImageService {
 
       // 图片生成后再次进行合规检验（检查图片内容是否合规）
       console.log(`[Generation] Step 5: Checking image content compliance...`);
-      const imageComplianceResult = await this.checkImageCompliance(imageUrl, session.structuredNeeds!);
+      const imageComplianceResult = await this.checkImageCompliance(imageUrl);
       console.log(`[Generation] Image compliance result:`, JSON.stringify(imageComplianceResult));
       
       if (!imageComplianceResult.passed) {
@@ -939,15 +940,10 @@ ${needsText}
    * 图片内容合规检验
    * 对生成的图片进行内容分析，检查是否包含违规元素
    */
-  private async checkImageCompliance(imageUrl: string, needs: StructuredNeeds): Promise<ComplianceResult> {
+  private async checkImageCompliance(imageUrl: string): Promise<ComplianceResult> {
     console.log('[ImageCompliance] 执行图片内容合规检验');
 
-    const imageCompliancePrompt = `你是一个投资咨询行业合规审核专家，正在对生成的图片进行内容审核。
-
-图片URL：${imageUrl}
-
-原始需求：
-${formatNeedsForPrompt(needs) || '（未指定）'}
+    const complianceInstruction = `你是一个投资咨询行业合规审核专家，正在对生成的图片进行内容审核。
 
 审核要求：
 请分析图片中是否包含以下违规内容：
@@ -972,8 +968,14 @@ ${formatNeedsForPrompt(needs) || '（未指定）'}
 }`;
 
     const response = await this.llmClient.invoke(
-      [{ role: 'user', content: imageCompliancePrompt }],
-      { model: 'doubao-seed-2-0-lite-260215', temperature: 0.3 }
+      [{ 
+        role: 'user', 
+        content: [
+          { type: "image_url", image_url: {url:imageUrl} },
+          { type: "text", text: complianceInstruction }
+        ]
+      }],
+      { model: 'doubao-seed-2-0-lite-260215', temperature: 0.2 }
     );
 
     // 解析结果
@@ -1386,7 +1388,7 @@ ${needsText}
 
     // 4. 图片内容合规检验
     console.log(`[OtherStages] Checking image content compliance...`);
-    const imageComplianceResult = await this.checkImageCompliance(imageUrl, session.structuredNeeds);
+    const imageComplianceResult = await this.checkImageCompliance(imageUrl);
     console.log(`[OtherStages] Image compliance result:`, JSON.stringify(imageComplianceResult));
     
     if (!imageComplianceResult.passed) {
