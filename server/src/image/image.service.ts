@@ -54,7 +54,7 @@ export interface StructuredNeeds {
 // 字段中文标签映射，集中维护，避免多处硬编码
 const NEED_FIELD_LABELS: Record<keyof StructuredNeeds, string> = {
   theme: '主题内容',
-  content: '图片内容',
+  content: '内容文案',
   colorTone: '色调倾向',
   scene: '场景描述',
   emotion: '情感基调',
@@ -79,6 +79,7 @@ const OPTIONAL_NEED_FIELDS: Array<keyof StructuredNeeds> = [
   'targetAudience',
   'usage',
   'referenceImages',
+  'otherRequirements'
 ];
 
 /**
@@ -400,34 +401,6 @@ export class ImageService {
     console.log(`[Collecting] Current structuredNeeds:`, JSON.stringify(session.structuredNeeds));
     console.log(`-------------------------------------------`);
 
-    // 构建需求收集Agent提示词（作为 system 消息注入，让 LLM Agent 真正生效）
-    const collectPrompt = this.buildCollectAgentPrompt(session);
-    console.log(`[Collecting] collectPrompt length: ${collectPrompt.length}`);
-
-    // 将 system 提示词 + 历史对话 + 当前用户消息合并传给 LLM
-    const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: collectPrompt },
-      ...session.messages.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-    ];
-
-    // 调用 LLM 进行需求收集（让 Agent 基于上下文给出引导回复）
-    let llmReply = '';
-    try {
-      console.log(`[Collecting] Calling LLM for agent reply...`);
-      const llmResponse = await this.llmClient.invoke(llmMessages, {
-        model: 'doubao-seed-2-0-lite-260215',
-        temperature: 0.7,
-      });
-      llmReply = (llmResponse.content || '').trim();
-      console.log(`[Collecting] LLM reply received: "${llmReply}"`);
-    } catch (e) {
-      console.error('[Collecting] LLM Agent 调用失败，将回退到模板回复:', e);
-      llmReply = '';
-    }
-
     // 分析用户消息，提取需求字段
     console.log(`[Collecting] Calling extractNeedsFromMessage...`);
     const extractedNeeds = await this.extractNeedsFromMessage(message, session);
@@ -449,6 +422,7 @@ export class ImageService {
 
     // 检查是否已收集完整（仅以必填字段为准，可选字段缺失也不阻塞生成）
     const isComplete = REQUIRED_NEED_FIELDS.every((field) => session.collectedFields.has(field));
+    const missingRequired = REQUIRED_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
     const missingOptional = OPTIONAL_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
     
     console.log(`[Collecting] REQUIRED_NEED_FIELDS: ${REQUIRED_NEED_FIELDS}`);
@@ -462,10 +436,32 @@ export class ImageService {
       message.trim().toLowerCase().includes(w.toLowerCase()),
     );
 
+    // 用户明确要求生成
     if (userSaysGenerate && session.structuredNeeds) {
-      // 用户明确要求生成，立即开始（不管必填字段是否完整）
-      console.log(`[Collecting] ✅ User triggered generation! Starting immediately regardless of field completeness`);
-      console.log(`[Collecting] Missing required fields: ${REQUIRED_NEED_FIELDS.filter(f => !session.collectedFields.has(f))}`);
+      // 先检查必填字段是否完整
+      if (missingRequired.length > 0) {
+        // 必填字段不完整，告知用户缺少哪些字段
+        console.log(`[Collecting] ❌ User triggered generation but required fields incomplete`);
+        console.log(`[Collecting] Missing required fields: ${missingRequired}`);
+        
+        const missingLabels = missingRequired.map(f => NEED_FIELD_LABELS[f]).join('、');
+        const reply = `抱歉，当前还缺少以下必填信息：${missingLabels}。请补充这些信息后再生成图片。`;
+        
+        session.messages.push({
+          role: 'assistant',
+          content: reply,
+        });
+
+        return {
+          stage: 'collecting' as SessionStage,
+          reply,
+          structuredNeeds: session.structuredNeeds,
+          type: 'text',
+        };
+      }
+
+      // 必填字段完整，开始生成图片
+      console.log(`[Collecting] ✅ User triggered generation! Required fields are complete`);
 
       session.messages.push({
         role: 'assistant',
@@ -475,25 +471,99 @@ export class ImageService {
       return await this.proceedToGeneration(session);
     }
 
+    // 必填字段已齐全
     if (isComplete && session.structuredNeeds) {
-      // 必填字段已齐全 —— 自动进入合规 + 生成流程，不再等待用户确认
-      console.log(`[Collecting] ✅ REQUIRED FIELDS ARE COMPLETE! Auto-proceeding to generation`);
+      console.log(`[Collecting] ✅ REQUIRED FIELDS ARE COMPLETE!`);
 
-      session.messages.push({
-        role: 'assistant',
-        content: '需求已收集完整，正在为您进行合规校验并生成素材，请稍候...',
-      });
+      if (missingOptional.length > 0) {
+        // 继续收集可选字段，使用 LLM 基于最新状态生成引导回复
+        console.log(`[Collecting] Continuing to collect optional fields...`);
+        
+        // 构建最新的 collectPrompt（包含已更新的字段信息）
+        const collectPrompt = this.buildCollectAgentPrompt(session);
+        const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+          { role: 'system', content: collectPrompt },
+          ...session.messages.map((m) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
+        ];
 
-      console.log(`[Collecting] Calling proceedToGeneration...`);
-      return await this.proceedToGeneration(session);
+        let llmReply = '';
+        try {
+          console.log(`[Collecting] Calling LLM for optional field guidance...`);
+          const llmResponse = await this.llmClient.invoke(llmMessages, {
+            model: 'doubao-seed-2-0-lite-260215',
+            temperature: session.temperatures?.extractNeeds ?? 0.7,
+          });
+          llmReply = (llmResponse.content || '').trim();
+          console.log(`[Collecting] LLM optional guide reply: "${llmReply}"`);
+        } catch (e) {
+          console.error('[Collecting] LLM optional guide 调用失败，回退到模板:', e);
+          llmReply = '';
+        }
+
+        // 优先使用 LLM 回复，回退到模板
+        const guideReply = llmReply && llmReply.length > 0 && llmReply.length < 120
+          ? llmReply
+          : this.generateGuideReply(session);
+        const enhancedReply = `${guideReply}\n\n如需立即生成图片，请输入"生成"、"确认"、"开始"等关键词明确指示。`;
+
+        session.messages.push({
+          role: 'assistant',
+          content: enhancedReply,
+        });
+
+        return {
+          stage: 'collecting' as SessionStage,
+          reply: enhancedReply,
+          structuredNeeds: session.structuredNeeds,
+          type: 'text',
+        };
+      } else {
+        // 所有字段都已收集，直接开始生成图片
+        console.log(`[Collecting] ✅ ALL FIELDS COLLECTED! Auto-proceeding to generation`);
+
+        session.messages.push({
+          role: 'assistant',
+          content: '所有信息已收集完整，正在为您进行合规校验并生成素材，请稍候...',
+        });
+
+        return await this.proceedToGeneration(session);
+      }
     } else {
-      // 继续收集需求
-      console.log(`[Collecting] ⏳ Not complete. isComplete=${isComplete}, structuredNeeds=${!!session.structuredNeeds}`);
+      // 必填字段还未收集完整，继续引导用户
+      console.log(`[Collecting] ⏳ Required fields not complete. isComplete=${isComplete}`);
+
+      // 构建最新的 collectPrompt（包含已更新的字段信息）
+      const collectPrompt = this.buildCollectAgentPrompt(session);
+      const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: collectPrompt },
+        ...session.messages.map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
+      ];
+
+      // 调用 LLM 获取引导回复
+      let llmReply = '';
+      try {
+        console.log(`[Collecting] Calling LLM for guidance...`);
+        const llmResponse = await this.llmClient.invoke(llmMessages, {
+          model: 'doubao-seed-2-0-lite-260215',
+          temperature: session.temperatures?.extractNeeds ?? 0.7,
+        });
+        llmReply = (llmResponse.content || '').trim();
+        console.log(`[Collecting] LLM reply received: "${llmReply}"`);
+      } catch (e) {
+        console.error('[Collecting] LLM Agent 调用失败，将回退到模板回复:', e);
+        llmReply = '';
+      }
 
       // 优先使用 LLM 基于上下文生成的引导回复，确保贴合对话语境
       const guideReply = llmReply && llmReply.length > 0 && llmReply.length < 80
         ? llmReply
-        : await this.generateGuideReply(session);
+        : this.generateGuideReply(session);
 
       console.log(`[Collecting] Guide reply to user: "${guideReply}"`);
 
@@ -564,9 +634,35 @@ export class ImageService {
       console.log(`[Generation] Image generated: "${imageUrl}"`);
       session.generatedImage = imageUrl;
 
+      // 图片生成后再次进行合规检验（检查图片内容是否合规）
+      console.log(`[Generation] Step 5: Checking image content compliance...`);
+      const imageComplianceResult = await this.checkImageCompliance(imageUrl, session.structuredNeeds!);
+      console.log(`[Generation] Image compliance result:`, JSON.stringify(imageComplianceResult));
+      
+      if (!imageComplianceResult.passed) {
+        console.log(`[Generation] ❌ Image content compliance FAILED`);
+        
+        session.stage = 'violation';
+        session.complianceResult = imageComplianceResult;
+        
+        session.messages.push({
+          role: 'assistant',
+          content: `抱歉，生成的图片内容未能通过合规校验。${imageComplianceResult.violationAspects}\n\n改进建议：${imageComplianceResult.suggestions}\n\n请您优化需求后重新生成。`
+        });
+
+        return {
+          stage: 'violation' as SessionStage,
+          reply: `抱歉，生成的图片内容未能通过合规校验。`,
+          complianceResult: imageComplianceResult,
+          structuredNeeds: session.structuredNeeds,
+          type: 'violation-warning'
+        };
+      }
+      console.log(`[Generation] ✅ Image content compliance PASSED`);
+
       // 保存到数据库
-      console.log(`[Generation] Step 5: Saving to database...`);
-      await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, complianceResult);
+      console.log(`[Generation] Step 6: Saving to database...`);
+      await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, imageComplianceResult);
       console.log(`[Generation] Saved to database successfully`);
 
       // 标记完成
@@ -625,8 +721,6 @@ export class ImageService {
    */
   private buildCollectAgentPrompt(session: SessionData): string {
     const collectedFields = Array.from(session.collectedFields);
-    const missingRequired = REQUIRED_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
-    const missingOptional = OPTIONAL_NEED_FIELDS.filter((f) => !session.collectedFields.has(f));
 
     const requiredDesc = REQUIRED_NEED_FIELDS.map(
       (f) => `${f}(${NEED_FIELD_LABELS[f]})`,
@@ -653,14 +747,14 @@ export class ImageService {
 3. 如果必填字段已齐全但可选字段仍有缺失，主动提示用户是否补充（例如"为了让素材更贴合使用场景，是否可以告诉我...？"）
 4. 对于 includedElements（包含元素），引导用户说明图片中必须包含哪些元素，以及每个元素的使用位置
 5. 对于 referenceImages（参考图片），询问用户是否有参考图片可以上传，以及想在哪些方面借鉴
-6. 注意倾听用户的其他需求，对于无法归类到特定字段的信息，完整记录到其他需求中
+6. 注意倾听用户的其他需求，对于无法归类到特定字段的信息，完整记录到otherRequirements（其他需求）中
 7. 不要一次问多个问题，一次只引导一个字段
 8. 避免重复已收集的信息
 
 回复要求：
 - 简洁友好，不超过3句话
 - 语气自然，不要像在填表
-- 如果所有必填和可选字段都已收集，提示用户即将进行合规校验`;
+- 如果所有必填和可选字段都已收集，提示用户输入“确认”、“生成”等关键词，确认后开始生成图片`;
   }
 
   /**
@@ -675,21 +769,25 @@ export class ImageService {
 
     const extractPrompt = `分析用户输入，提取图片生成需求字段。
 
-用户输入：${message}
+用户最新输入：${message}
 
-已有的需求（作为参考，若用户新输入有更新则以新输入为准）：
-${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
+历史已有需求（仅作参考，**用户本次输入提出更新/冲突内容时，一律以本次新输入为准；本次未提及的字段，保留历史已有值**）：
+${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无历史需求）'}
 
-请尽可能提取以下字段（未提到的字段留空字符串，不要编造）：
+提取规则：
+1. 严格依据文本信息提取，**没有提到的字段严格填空字符串""（普通文本字段）或空数组[]（数组字段），严禁自行猜测、编造任何信息；禁止填充默认风格、默认色调等脑补内容。**
+2. 无法归类到下面独立字段的全部细节需求，原样完整存入 otherRequirements，不得遗漏用户描述。
 
+
+需要提取字段清单：
 - theme: 主题内容（如品牌宣传、团队风采、数据可视化等）
-- content: 内容描述（如品牌介绍、产品展示、案例分析等） 
+- content: 内容文案（如风险管理、耐心布局、专业陪伴、科学理财等）
 - colorTone: 色调倾向（如蓝色、灰色、暖色调等）
 - style: 图片风格（如专业稳重、现代简约、科技感等）
-- scene: 场景描述（如办公室、会议室等）
+- scene: 图片场景（如办公室、会议室等）
 - emotion: 情感基调（如专业、温暖、活力等）
 - size: 图片尺寸或比例（如 1:1、16:9、竖版海报 1080x1920 等）
-- targetAudience: 目标受众（如高净值客户、年轻投资者、内部员工等）
+- targetAudience: 目标受众（如高净值客户、保守型投资者、普通投资者、内部员工等）
 - usage: 使用场景（如朋友圈、公众号头图、海报、线下展架、短视频封面等）
 - otherRequirements: 其他需求（用户提到的但无法归类到以上字段的所有信息，全部记录在此，保持原始语义）
 - referenceImages: 参考图片（数组，每个元素为{"url":"图片URL","aspects":["借鉴方面1","借鉴方面2"]}）
@@ -746,8 +844,10 @@ ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
       const field = missingRequired[0];
       const questionMap: Record<string, string> = {
         theme: '请告诉我图片的主题内容是什么？例如：品牌宣传、团队风采、数据可视化等。',
+        content: '请告诉我图片上需要展示什么具体内容或文案？例如：公司名称、Slogan、产品介绍等。',
         colorTone: '您希望图片使用什么色调？例如：蓝色（专业稳重）、暖色调（温暖亲和）等。',
         style: '图片的风格倾向是什么？例如：专业稳重、现代简约、科技感等。',
+        includedElements: '图片中需要包含哪些元素？例如：Logo、二维码、图标等，请说明每个元素的类型和放置位置。',
       };
       return questionMap[field] || `请补充一下「${NEED_FIELD_LABELS[field]}」相关的信息。`;
     }
@@ -760,8 +860,10 @@ ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无）'}
         targetAudience: '为了让素材更有针对性，这次图片主要面向哪类受众？例如：高净值客户、年轻投资者、内部员工等。',
         usage: '这张图片会用在哪里？例如：朋友圈、公众号头图、海报、短视频封面等。',
         size: '您希望图片的尺寸/比例是多少？例如：1:1 方图、16:9 横版、竖版海报等。',
-        scene: '如果图片中涉及场景，您希望是在哪里？例如：办公室、会议室等。',
-        emotion: '您希望图片传达什么情感基调？例如：专业、温暖、活力等。',
+        scene: '如果图片中涉及场景，您希望是在哪里？例如：办公室、会议室、户外城市等。',
+        emotion: '您希望图片传达什么情感基调？例如：专业、温暖、活力、稳重等。',
+        otherRequirements: '您还有其他特殊需求吗？例如：特定元素的位置、排版要求、禁忌内容等。',
+        referenceImages: '您是否有参考图片希望我们借鉴？如果有，请上传参考图并说明借鉴的方面，如构图、配色、风格等。',
       };
       return questionMap[field] || `为了让素材更贴合需求，可以补充一下「${NEED_FIELD_LABELS[field]}」吗？`;
     }
@@ -834,6 +936,61 @@ ${needsText}
   }
 
   /**
+   * 图片内容合规检验
+   * 对生成的图片进行内容分析，检查是否包含违规元素
+   */
+  private async checkImageCompliance(imageUrl: string, needs: StructuredNeeds): Promise<ComplianceResult> {
+    console.log('[ImageCompliance] 执行图片内容合规检验');
+
+    const imageCompliancePrompt = `你是一个投资咨询行业合规审核专家，正在对生成的图片进行内容审核。
+
+图片URL：${imageUrl}
+
+原始需求：
+${formatNeedsForPrompt(needs) || '（未指定）'}
+
+审核要求：
+请分析图片中是否包含以下违规内容：
+1. 收益承诺类文字（如"年化收益XX%"、"稳赚不赔"、"保本"、"零风险"等）
+2. 夸大宣传类文字（如"最强"、"最佳"、"唯一"、"顶级"、"无风险"等）
+3. 误导性表达（如"保证收益"、"坐享其成"等）
+4. 违规的数据可视化（未标注"历史业绩不代表未来收益"的收益图表、K线图等）
+5. 荐股相关内容（股票代码、股票名称、买入卖出建议等）
+6. 其他违反投资咨询行业规范的内容
+
+特别关注：
+- 如果图片中出现收益数据、历史业绩图表、增长曲线等，必须检查是否包含"历史业绩不代表未来收益"的合规标语
+- 如果图片中包含文字，检查文字内容是否合规
+- 所有的图片都应该包含合规标语（如"投资有风险，入市需谨慎")，否则判定为不合规
+
+请判断该图片是否合规，输出JSON格式：
+{
+  "passed": true/false,
+  "violationAspects": "违规的具体方面（如果不合规）",
+  "suggestions": "改进建议（如果不合规）",
+  "reason": "合规/不合规的原因"
+}`;
+
+    const response = await this.llmClient.invoke(
+      [{ role: 'user', content: imageCompliancePrompt }],
+      { model: 'doubao-seed-2-0-lite-260215', temperature: 0.3 }
+    );
+
+    // 解析结果
+    try {
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      console.error('[ImageCompliance] 解析失败:', e);
+    }
+
+    // 默认返回通过
+    return { passed: true, reason: '图片内容符合行业规范' };
+  }
+
+  /**
    * 生成正负提示词（基于全部已收集字段）
    */
   private async generatePrompts(needs: StructuredNeeds, temperature?: number): Promise<{ positivePrompt: string; negativePrompt: string }> {
@@ -844,60 +1001,30 @@ ${needsText}
     // 根据 usage 推导画面尺寸建议（作为 size 的兜底）
     const sizeHint = needs.size || this.inferSizeFromUsage(needs.usage);
 
-    // 参考图片提示
-    const referenceImages = needs.referenceImages || [];
-    const hasReferenceImages = referenceImages.length > 0;
-    console.log('[Prompts] 参考图片数量:', hasReferenceImages ? referenceImages.length : 0);
-    if (hasReferenceImages) {
-      console.log('[Prompts] 参考图片详情:', JSON.stringify(referenceImages));
-    }
     
-    const referenceImageHint = hasReferenceImages
-      ? `参考图片：\n${referenceImages.map((img, idx) => 
-          `图片${idx + 1}：借鉴方面为${img.aspects?.join('、') || '整体风格'}`
-        ).join('\n')}\n\n生成的图片风格、色调、构图应与参考图片保持一致。`
-      : '';
-
-    // 包含元素提示
-    const includedElements = needs.includedElements || [];
-    const hasIncludedElements = includedElements.length > 0;
-    console.log('[Prompts] 包含元素数量:', hasIncludedElements ? includedElements.length : 0);
-    if (hasIncludedElements) {
-      console.log('[Prompts] 包含元素详情:', JSON.stringify(includedElements));
-    }
-    
-    const includedElementsHint = hasIncludedElements
-      ? `包含元素：\n${includedElements.map((elem, idx) => {
-          const typeLabel = elem.type === 'image' ? '图片' : '文字';
-          const positionText = elem.position ? `，放置在${elem.position}` : '';
-          const noteText = elem.note ? `，备注：${elem.note}` : '';
-          return `元素${idx + 1}：[${typeLabel}] ${elem.value}${positionText}${noteText}`;
-        }).join('\n')}\n\n生成的图片中必须包含上述所有元素，并按照指定位置放置。对于有备注的元素，请根据备注描述进行处理。`
-      : '';
-
     const promptGenerator = `根据以下需求，生成一张营销素材图片的正、负向提示词。
 
 已收集的全部需求：
 ${needsText}
 ${sizeHint ? `- 建议尺寸/比例：${sizeHint}` : ''}
 
-${referenceImageHint}
-
-${includedElementsHint}
 
 生成要求：
-1. positivePrompt（正向提示词）：用一段连贯的中文描述画面，务必覆盖以下要素：
+1. positivePrompt（正向提示词）：根据已经收集的需求，生成一段连贯中文画面描述。参考描述维度清单：
    - 主题与核心主体（theme）
-   - 色调与氛围（colorTone、emotion）
+   - 内容文案（content）
+   - 色调（colorTone）
+   - 氛围（emotion）
    - 画面风格（style）
-   - 使用场景/构图（scene、usage）
-   - 目标受众的身份特征（targetAudience，例如"专业的理财顾问形象"、"年轻投资者"等）
-   - 若涉及尺寸，应在提示词中体现构图比例（如 1:1 方图、16:9 横版、9:16 竖版）
-   - 适当补充细节，如"专业的商务摄影"、"高清质感"、"专业构图"等
-   - 必须包含所有指定的包含元素，并按照指定位置放置
-   - 图片中的文字必须清晰可读，字体工整，无扭曲变形，无乱码
-2. negativePrompt（负向提示词）：列出需要避免的元素，例如低质量、违规文字、卡通风格、廉价感、杂乱背景、过多水印、文字扭曲、文字变形、文字模糊、乱码、不可读文字等。
-3. 正/负提示词均禁止出现任何可能违反投资咨询行业合规的文字（如收益承诺、夸大宣传、荐股等）。
+   - 使用场景（usage）
+   - 画面构图（scene）
+   - 目标受众的身份特征（targetAudience）
+   - 若涉及尺寸（size）
+   - 其他需求（otherRequirements）
+   规则：需求中明确给出的信息，全部完整体现在画面描述中；需求未提及的维度，不要凭空虚构内容、禁止自行编造信息。在不新增虚构信息的前提下，尽可能丰富连贯地整合全部已知条件。
+2. negativePrompt（负向提示词）：列出需要避免的元素，例如文字扭曲，文字模糊，字体粘连，错字，乱码，畸形文字，残缺笔画，变形字符，杂乱水印，现金，金条，豪车，豪宅，陡峭上涨K线，涨停箭头，收益率数字，暴富，爆炸光，高饱和艳红色，夸张亢奋人物，低俗炫富元素，噪点严重，画面拥挤，无留白，画面元素过度堆砌等。
+3. 正向提示词禁止出现任何可能违反投资咨询行业合规的文字（如收益承诺、夸大宣传、荐股等）。
+
 
 输出严格 JSON 格式：
 {
@@ -922,6 +1049,8 @@ ${includedElementsHint}
     } catch (e) {
       console.error('[Prompts] 解析失败:', e);
     }
+    // 获取合规标语
+    const complianceBanner = this.getComplianceBanner(needs);
     
     // 兜底：把所有字段拼接到正向提示词里，确保不丢失
     const fallbackParts: string[] = [];
@@ -938,10 +1067,32 @@ ${includedElementsHint}
       fallbackParts.push(`参考图片风格：${needs.referenceImages.map(img => img.aspects?.join('、') || '整体风格').join('，')}`);
     }
 
+    // 使用之前声明的合规标语
+    const complianceBannerText = `，图片底部添加合规标语：${complianceBanner}`;
+
     return {
-      positivePrompt: `${fallbackParts.join('，')}，专业商务摄影，高清，构图专业，符合投资咨询行业形象`,
+      positivePrompt: `${fallbackParts.join('，')}，专业商务摄影，高清，构图专业，符合投资咨询行业形象${complianceBannerText}`,
       negativePrompt: '低质量，模糊，违规文字，收益承诺，夸大宣传，卡通风格，廉价感，杂乱背景'
     };
+  }
+
+  /**
+   * 获取合规标语内容
+   * 所有图片都需要添加合规标语，特殊情况需要特殊标语
+   */
+  private getComplianceBanner(needs: StructuredNeeds): string {
+    const checkFields = [needs.theme, needs.content, needs.scene, needs.otherRequirements, needs.summary];
+    const triggerKeywords = ['收益', '业绩', '数据', '图表', '可视化', '增长', '回报', '盈利', '利润', '收益曲线', 'K线', '走势图'];
+    
+    // 如果涉及收益数据、历史业绩等，添加特殊标语
+    if (checkFields.some(field => 
+      field && triggerKeywords.some(keyword => field.includes(keyword))
+    )) {
+      return '"历史业绩不代表未来收益"';
+    }
+    
+    // 默认通用合规标语
+    return '"投资有风险，入市需谨慎"';
   }
 
   /**
@@ -1046,8 +1197,6 @@ ${needsText}
     temperature?: number,
   ): Promise<string> {
     console.log('[Image] 生成图片');
-    console.log('[Image] 正向提示词:', positivePrompt);
-    console.log('[Image] 负向提示词:', negativePrompt);
 
     const sdkSize = this.resolveSdkSize(needs?.size, needs?.usage);
     console.log('[Image] SDK size:', sdkSize);
@@ -1065,8 +1214,56 @@ ${needsText}
       console.log('[Image] 包含图片:', includedImages.map(img => img.value).join(', '));
     }
 
+    
+      // 参考图片提示
+    const hasReferenceImages = referenceImages.length > 0;
+    console.log('[Prompts] 参考图片数量:', hasReferenceImages ? referenceImages.length : 0);
+    if (hasReferenceImages) {
+      console.log('[Prompts] 参考图片详情:', JSON.stringify(referenceImages));
+    }
+
+    const referenceImageHint = hasReferenceImages
+      ? `参考图片：\n${referenceImages.map((img, idx) => 
+          `图片${idx + 1}：借鉴方面为${img.aspects?.join('、') || '整体风格'}`
+        ).join('\n')}\n\n生成的图片风格、色调、构图应与参考图片保持一致。`
+      : null;
+    
+
+    // 包含元素提示
+    const hasIncludedElements = includedElements.length > 0;
+    console.log('[Prompts] 包含元素数量:', hasIncludedElements ? includedElements.length : 0);
+    if (hasIncludedElements) {
+      console.log('[Prompts] 包含元素详情:', JSON.stringify(includedElements));
+    }
+    
+    const includedElementsHint = hasIncludedElements
+      ? `包含元素：\n${includedElements.map((elem, idx) => {
+          const typeLabel = elem.type === 'image' ? '图片' : '文字';
+          const positionText = elem.position ? `，放置在${elem.position}` : '';
+          const noteText = elem.note ? `，备注：${elem.note}` : '';
+          return `元素${idx + 1}：[${typeLabel}] ${elem.value}${positionText}${noteText}`;
+        }).join('\n')}\n\n生成的图片中必须包含上述所有元素，并按照指定位置放置。对于有备注的元素，请根据备注描述进行处理。`
+      : null;
+
+    // 获取合规标语
+    const complianceBanner = this.getComplianceBanner(needs || {});
+    const complianceBannerInstruction = `4. 图片底部必须添加合规标语：${complianceBanner}，标语要清晰可见但不影响主图内容`;
+
+    
+    
+
+
     try {
-      const finalPrompt = `${positivePrompt}，避免出现：${negativePrompt}`;
+      const finalPrompt = `
+      1.${positivePrompt}，避免出现：${negativePrompt}。
+      2. 图中所有的内容，包括大标题、小标题、详细说明和提示语，必须是清晰可辨的简体中文，笔画清晰完整，文字无粘连，文字边缘锐利，分辨率 4k，确保所有中文字体印刷级清晰。在没有特殊指定的情况下，主体文案默认使用微软雅黑字体，字体加粗，文字左右居中，垂直位置偏上摆放，不要贴顶，上方留有少量空隙，字间距1.5倍。
+      3. 自动补充适度细节，丰富画面层次；细节贴合主题，不添加违规金融符号，控制细节密度，不堆砌元素、不遮挡文字留白，风格简约克制，禁用暴涨K线、收益数字、现金金条等暗示盈利元素。参考方向：投资者教育可用交流人物、研报、资产配置图表；产品介绍可用大类资产结构图、投资期限轴、方案表单；绩效服务展示可用复盘记录、洽谈场景、风险示意图；行情资讯使用中性平缓抽象线条、研报，避免涨跌预测箭头；公司介绍可用办公场景、团队研讨、资质牌匾。未列出的场景，允许结合投顾行业专业调性自主推演适配细节，不得违反上述约束。
+      ${complianceBannerInstruction}
+      ${referenceImageHint ? `5. ${referenceImageHint}` : ''}
+      ${includedElementsHint ? `6. ${includedElementsHint}` : ''}
+      `;
+      
+      console.log('[Image] 最终提示词:', finalPrompt);
 
       const imageTemp = temperature ?? 0.7;
       console.log(`[Image] Using temperature: ${imageTemp}`);
