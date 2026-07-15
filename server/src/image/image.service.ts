@@ -961,7 +961,7 @@ ${formatNeedsForPrompt(needs) || '（未指定）'}
 特别关注：
 - 如果图片中出现收益数据、历史业绩图表、增长曲线等，必须检查是否包含"历史业绩不代表未来收益"的合规标语
 - 如果图片中包含文字，检查文字内容是否合规
-- 所有的图片都应该包含合规标语（如"投资有风险，入市需谨慎")，否则判定为不合规
+- 重点检查图片四周，图片都应该包含合规标语（如"投资有风险，入市需谨慎"等类似的合规标语），否则判定为不合规
 
 请判断该图片是否合规，输出JSON格式：
 {
@@ -1332,6 +1332,22 @@ ${needsText}
       return await this.handleCollectingStage(session, message);
     }
 
+    // 将之前生成的图片作为参考图
+    if (session.generatedImage) {
+      if (!session.structuredNeeds.referenceImages) {
+        session.structuredNeeds.referenceImages = [];
+      }
+      // 避免重复添加
+      const hasExisting = session.structuredNeeds.referenceImages.some(img => img.url === session.generatedImage);
+      if (!hasExisting) {
+        session.structuredNeeds.referenceImages.push({
+          url: session.generatedImage,
+          aspects: ['整体风格', '构图', '色调']
+        });
+        console.log('[OtherStages] 已将上一张生成图片添加为参考图');
+      }
+    }
+
     // 1. 使用 LLM 根据用户反馈更新结构化需求
     const updatedNeeds = await this.refineNeedsFromFeedback(session.structuredNeeds, message);
     session.structuredNeeds = { ...session.structuredNeeds, ...updatedNeeds };
@@ -1368,8 +1384,34 @@ ${needsText}
     const imageUrl = await this.generateImageFromPrompts(positivePrompt, negativePrompt, session.structuredNeeds, session.temperatures?.generateImage);
     session.generatedImage = imageUrl;
 
-    // 4. 保存新图片到数据库
-    await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, complianceResult);
+    // 4. 图片内容合规检验
+    console.log(`[OtherStages] Checking image content compliance...`);
+    const imageComplianceResult = await this.checkImageCompliance(imageUrl, session.structuredNeeds);
+    console.log(`[OtherStages] Image compliance result:`, JSON.stringify(imageComplianceResult));
+    
+    if (!imageComplianceResult.passed) {
+      console.log(`[OtherStages] ❌ Image content compliance FAILED`);
+      
+      session.stage = 'violation';
+      session.complianceResult = imageComplianceResult;
+      
+      session.messages.push({
+        role: 'assistant',
+        content: `抱歉，重新生成的图片内容未能通过合规校验。${imageComplianceResult.violationAspects}\n\n改进建议：${imageComplianceResult.suggestions}\n\n请您优化需求后重新调整。`
+      });
+
+      return {
+        stage: 'violation' as SessionStage,
+        reply: `抱歉，重新生成的图片内容未能通过合规校验。`,
+        complianceResult: imageComplianceResult,
+        structuredNeeds: session.structuredNeeds,
+        type: 'violation-warning'
+      };
+    }
+    console.log(`[OtherStages] ✅ Image content compliance PASSED`);
+
+    // 5. 保存新图片到数据库
+    await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, imageComplianceResult);
 
     session.stage = 'completed';
 
@@ -1386,7 +1428,7 @@ ${needsText}
       stage: 'completed' as SessionStage,
       reply: `已根据您的反馈重新生成图片！${summaryText}`,
       structuredNeeds: session.structuredNeeds,
-      complianceResult,
+      complianceResult: imageComplianceResult,
       generatedImage: imageUrl,
       disclaimer: this.generateDisclaimer(session.structuredNeeds),
       type: 'image',
@@ -1414,6 +1456,7 @@ ${formatNeedsForPrompt(currentNeeds)}
 
 可选字段及含义：
 - theme: 主题内容
+- content: 内容文案（图片上展示的具体文字内容）
 - colorTone: 色调倾向（如 "更蓝", "更暖", "更暗" 等）
 - style: 图片风格
 - scene: 场景描述
@@ -1421,6 +1464,8 @@ ${formatNeedsForPrompt(currentNeeds)}
 - size: 图片尺寸或比例
 - targetAudience: 目标受众
 - usage: 使用场景
+- referenceImages: 参考图片（数组格式，包含 url 和 aspects 字段，如 [{"url": "图片链接", "aspects": ["借鉴方面"]}]）
+- includedElements: 包含元素（数组格式，如 [{"type": "image/text", "value": "图片链接/文字内容", "position": "放置位置", "note": "备注"}]）
 - otherRequirements: 其他需求（用户提到的但无法归类到以上字段的所有信息，全部记录在此）
 
 示例输出：
