@@ -329,6 +329,8 @@ const HomePage = ({
         temperatures
       };
 
+      console.log('[DEBUG] Sending request with stage:', sessionState.stage, 'requestData:', JSON.stringify(requestData));
+
       if (imagesToSend.length > 0) {
         const referenceImages = imagesToSend.filter(img => img.imageType === 'reference');
         const includedElements = imagesToSend.filter(img => img.imageType === 'included');
@@ -356,6 +358,8 @@ const HomePage = ({
       });
 
       const { code, msg, data } = response.data;
+
+      console.log('[DEBUG] Received response, code:', code, 'data.stage:', data?.stage, 'full data:', JSON.stringify(data));
 
       if (code === 200) {
         setSessionState(prev => ({

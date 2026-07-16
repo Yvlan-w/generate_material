@@ -214,6 +214,7 @@ export class ImageService {
       console.log(`[Chat] Found existing session`);
       console.log(`[Chat] Session collectedFields: ${Array.from(session.collectedFields)}`);
       console.log(`[Chat] Session structuredNeeds:`, JSON.stringify(session.structuredNeeds));
+      console.log(`[Chat] Session stage: ${session.stage}`);
       if (temperatures) {
         session.temperatures = temperatures;
       }
@@ -362,7 +363,10 @@ export class ImageService {
     session.messages.push({ role: 'user', content: message });
     
     // 根据当前阶段处理
-    switch (currentStage) {
+    // 如果请求中的stage为undefined，使用session中存储的stage
+    const effectiveStage = currentStage || session.stage;
+    
+    switch (effectiveStage) {
       case 'collecting':
         console.log(`[Chat] → Calling handleCollectingStage`);
         return await this.handleCollectingStage(session, message);
@@ -409,15 +413,20 @@ export class ImageService {
 
     // 更新已收集的字段
     if (extractedNeeds) {
+      const filteredNeeds: Partial<StructuredNeeds> = {};
+      
       Object.keys(extractedNeeds).forEach((key) => {
         const value = (extractedNeeds as any)[key];
-        if (value) {
+        // 过滤空值、空字符串和空数组，避免覆盖已有的值
+        if (value !== '' && value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0)) {
           console.log(`[Collecting] Adding field "${key}" with value "${value}"`);
           session.collectedFields.add(key);
+          (filteredNeeds as any)[key] = value;
         }
       });
+      
       // 合并新提取的字段到 structuredNeeds，确保不丢失之前的值
-      session.structuredNeeds = { ...session.structuredNeeds, ...extractedNeeds };
+      session.structuredNeeds = { ...session.structuredNeeds, ...filteredNeeds };
       console.log(`[Collecting] structuredNeeds after merge:`, JSON.stringify(session.structuredNeeds));
     }
 
