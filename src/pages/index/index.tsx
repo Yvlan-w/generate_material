@@ -324,6 +324,7 @@ const HomePage = ({
       const requestData: Record<string, any> = {
         sessionId: sessionState.sessionId,
         message: userMessage.content,
+        stage: sessionState.stage,
         userId,
         temperatures
       };
