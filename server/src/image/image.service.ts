@@ -785,7 +785,7 @@ export class ImageService {
 ${formatNeedsForPrompt(session.structuredNeeds || {}) || '（无历史需求）'}
 
 提取规则：
-1. 严格依据文本信息提取，**没有提到的字段严格填空字符串""（普通文本字段）或空数组[]（数组字段），严禁自行猜测、编造任何信息；禁止填充默认风格、默认色调等脑补内容。**
+1. 严格依据文本信息提取；仅当需求中明确提及对应字段时，才在JSON内输出该键。未提到的字段**不要生成对应的JSON键，直接省略**，严禁自行猜测、编造任何信息；禁止填充默认风格、默认色调等脑补内容。
 2. 无法归类到下面独立字段的全部细节需求，原样完整存入 otherRequirements，不得遗漏用户描述。
 
 
@@ -1338,65 +1338,73 @@ ${needsText}
 
     session.messages.push({ role: 'user', content: message });
 
-    // 如果 session 没有结构化需求，回退到收集阶段
-    if (!session.structuredNeeds) {
+    // 如果 session 没有结构化需求或没有生成过图片，回退到收集阶段
+    if (!session.structuredNeeds || !session.generatedImage) {
       return await this.handleCollectingStage(session, message);
     }
 
-    // 将之前生成的图片作为参考图
-    if (session.generatedImage) {
-      if (!session.structuredNeeds.referenceImages) {
-        session.structuredNeeds.referenceImages = [];
-      }
-      // 避免重复添加
-      const hasExisting = session.structuredNeeds.referenceImages.some(img => img.url === session.generatedImage);
-      if (!hasExisting) {
-        session.structuredNeeds.referenceImages.push({
-          url: session.generatedImage,
-          aspects: ['整体风格', '构图', '色调']
-        });
-        console.log('[OtherStages] 已将上一张生成图片添加为参考图');
-      }
-    }
-
-    // 1. 使用 LLM 根据用户反馈更新结构化需求
-    const updatedNeeds = await this.refineNeedsFromFeedback(session.structuredNeeds, message);
-    session.structuredNeeds = { ...session.structuredNeeds, ...updatedNeeds };
-
-    // 重新生成摘要
-    try {
-      session.structuredNeeds.summary = await this.generateSummary(session.structuredNeeds);
-    } catch (e) {
-      console.error('[OtherStages] 摘要重新生成失败:', e);
-    }
-
-    // 2. 合规校验
-    const complianceResult = await this.checkCompliance(session.structuredNeeds);
-    session.complianceResult = complianceResult;
-
-    if (!complianceResult.passed) {
-      session.stage = 'violation';
-      session.messages.push({
-        role: 'assistant',
-        content: `抱歉，您的调整需求未能通过合规校验。${complianceResult.violationAspects}\n\n改进建议：${complianceResult.suggestions}`,
-      });
-      return {
-        stage: 'violation' as SessionStage,
-        reply: `抱歉，您的调整需求未能通过合规校验。`,
-        complianceResult,
-        structuredNeeds: session.structuredNeeds,
-        type: 'violation-warning',
-      };
-    }
-
-    // 3. 重新生成提示词和图片
+    // 生成图片（图生图模式，直接调用底层 API）
     session.stage = 'generating';
-    const { positivePrompt, negativePrompt } = await this.generatePrompts(session.structuredNeeds, session.temperatures?.generatePrompts);
-    const imageUrl = await this.generateImageFromPrompts(positivePrompt, negativePrompt, session.structuredNeeds, session.temperatures?.generateImage);
+    console.log('[OtherStages] Step 1: Generating image with fine-tuning...');
+
+    const sdkSize = this.resolveSdkSize(session.structuredNeeds.size, session.structuredNeeds.usage);
+    console.log('[OtherStages] SDK size:', sdkSize);
+
+    // 直接构建微调提示词，不经过 generatePrompts 处理
+    const fineTunePrompt = this.buildFineTunePrompt(session.structuredNeeds, message);
+    console.log('[OtherStages] 微调指令:', fineTunePrompt);
+
+    const complianceBanner = this.getComplianceBanner(session.structuredNeeds);
+
+    // 构建最终提示词：保留原图 + 用户修改要求 + 合规标语
+    const finalPrompt = `
+    ${fineTunePrompt}。
+    保持图片底部的合规标语清晰可见：${complianceBanner}。
+    图片中的文字必须是清晰可辨的简体中文，笔画清晰完整，分辨率 4k。
+    避免出现：文字扭曲、文字模糊、字体粘连、错字、乱码、现金、金条、豪车、豪宅、陡峭上涨K线、涨停箭头、收益率数字、暴富、爆炸光、高饱和艳红色、夸张亢奋人物、低俗炫富元素、噪点严重、画面拥挤、无留白、画面元素过度堆砌、收益承诺、夸大宣传、荐股相关内容。
+    `;
+
+    console.log('[OtherStages] 最终提示词:', finalPrompt);
+
+    const imageTemp = session.temperatures?.generateImage ?? 0.7;
+    console.log(`[OtherStages] Using temperature: ${imageTemp}`);
+
+    // 直接调用底层图片生成 API，携带原图作为参考
+    const generateParams: {
+      prompt: string;
+      size: string;
+      image?: string | string[];
+      temperature?: number;
+    } = {
+      prompt: finalPrompt,
+      size: sdkSize,
+      temperature: imageTemp,
+      image: session.generatedImage  // 使用原图作为参考图，触发图生图
+    };
+
+    console.log('[OtherStages] 图片参数（原图）:', generateParams.image);
+
+    let imageUrl: string;
+    try {
+      const response = await this.imageClient.generate(generateParams as any);
+      const helper = this.imageClient.getResponseHelper(response);
+
+      if (!helper.success || !helper.imageUrls || helper.imageUrls.length === 0) {
+        console.error('[OtherStages] 生成失败:', helper.errorMessages);
+        throw new Error(helper.errorMessages?.join(', ') || '图片生成失败');
+      }
+
+      imageUrl = helper.imageUrls[0];
+      console.log('[OtherStages] 生成成功，URL:', imageUrl);
+    } catch (e) {
+      console.error('[OtherStages] 生成失败:', e);
+      throw e;
+    }
+
     session.generatedImage = imageUrl;
 
-    // 4. 图片内容合规检验
-    console.log(`[OtherStages] Checking image content compliance...`);
+    // 图片内容合规检验
+    console.log(`[OtherStages] Step 2: Checking image content compliance...`);
     const imageComplianceResult = await this.checkImageCompliance(imageUrl);
     console.log(`[OtherStages] Image compliance result:`, JSON.stringify(imageComplianceResult));
     
@@ -1421,30 +1429,54 @@ ${needsText}
     }
     console.log(`[OtherStages] ✅ Image content compliance PASSED`);
 
-    // 5. 保存新图片到数据库
-    await this.saveImageToDatabase(session, imageUrl, positivePrompt, negativePrompt, imageComplianceResult);
+    // 保存新图片到数据库
+    await this.saveImageToDatabase(session, imageUrl, finalPrompt, '', imageComplianceResult);
 
     session.stage = 'completed';
 
-    const summaryText = session.structuredNeeds.summary
-      ? `\n\n最新需求摘要：${session.structuredNeeds.summary}`
-      : '';
-
     session.messages.push({
       role: 'assistant',
-      content: `已根据您的反馈重新生成图片！${summaryText}`,
+      content: `已根据您的反馈调整图片！`,
     });
 
     return {
       stage: 'completed' as SessionStage,
-      reply: `已根据您的反馈重新生成图片！${summaryText}`,
+      reply: `已根据您的反馈调整图片！`,
       structuredNeeds: session.structuredNeeds,
       complianceResult: imageComplianceResult,
       generatedImage: imageUrl,
       disclaimer: this.generateDisclaimer(session.structuredNeeds),
       type: 'image',
-      processingText: '素材生成中...',
+      processingText: '素材调整中...',
     };
+  }
+
+  /**
+   * 构建图生图微调指令
+   * 重点约束保留原图构图、姿态、元素位置，仅执行用户指定修改
+   */
+  private buildFineTunePrompt(needs: StructuredNeeds, userFeedback: string): string {
+    const promptParts: string[] = [];
+    
+    // 用户修改要求放在最前面，使用强措辞强调优先级
+    promptParts.push(`【核心修改指令】必须执行以下修改：${userFeedback}`);
+    
+    // 保留约束
+    promptParts.push('在执行上述修改时，保留原图的构图、人物姿态、元素位置和整体风格');
+    promptParts.push('修改应遵循原图的视觉风格和设计规范，确保修改后与原图风格一致');
+    promptParts.push('不要改变图片的主体内容和核心元素，仅对指定部分进行调整');
+
+    // 原始需求精简版（仅保留最关键的信息，避免稀释修改指令）
+    const contextParts: string[] = [];
+    if (needs.theme) contextParts.push(`主题：${needs.theme}`);
+    if (needs.content) contextParts.push(`内容：${needs.content}`);
+    if (needs.style) contextParts.push(`风格：${needs.style}`);
+    
+    if (contextParts.length > 0) {
+      promptParts.push(`参考：${contextParts.join('；')}`);
+    }
+    
+    return promptParts.join('，');
   }
 
   /**
