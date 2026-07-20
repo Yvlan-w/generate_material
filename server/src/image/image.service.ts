@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { LLMClient, ImageGenerationClient, Config, S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient } from '../storage/database/supabase-client';
 import { text } from 'stream/consumers';
+import { ImageGenerationRequest } from 'coze-coding-dev-sdk';
 
 /**
  * 对话状态定义
@@ -1283,11 +1284,11 @@ ${needsText}
         prompt: string;
         size: string;
         image?: string | string[];
-        temperature?: number;
+        watermark?: boolean;
       } = {
         prompt: finalPrompt,
         size: sdkSize,
-        temperature: imageTemp,
+        watermark: false,
       };
       
       const allImageUrls = [
@@ -1374,11 +1375,11 @@ ${needsText}
       prompt: string;
       size: string;
       image?: string | string[];
-      temperature?: number;
+      watermark?: boolean;
     } = {
       prompt: finalPrompt,
       size: sdkSize,
-      temperature: imageTemp,
+      watermark: false,
       image: session.generatedImage  // 使用原图作为参考图，触发图生图
     };
 
@@ -1386,7 +1387,7 @@ ${needsText}
 
     let imageUrl: string;
     try {
-      const response = await this.imageClient.generate(generateParams as any);
+      const response = await this.imageClient.generate(generateParams as ImageGenerationRequest);
       const helper = this.imageClient.getResponseHelper(response);
 
       if (!helper.success || !helper.imageUrls || helper.imageUrls.length === 0) {
@@ -1479,64 +1480,6 @@ ${needsText}
     return promptParts.join('，');
   }
 
-  /**
-   * 根据用户反馈更新需求字段（微调核心逻辑）
-   */
-  private async refineNeedsFromFeedback(
-    currentNeeds: StructuredNeeds,
-    feedback: string,
-  ): Promise<Partial<StructuredNeeds>> {
-    const refinePrompt = `您是一个图像需求微调专家。用户对刚刚生成的图片不满意，并给出了修改反馈。
-
-当前已确定的需求：
-${formatNeedsForPrompt(currentNeeds)}
-
-用户反馈：
-"${feedback}"
-
-请分析用户的反馈，推断用户对图片的修改要求，并更新对应的需求字段。
-输出严格 JSON 格式，只需要列出被修改或新增的字段。如果用户的反馈没有涉及到某个字段，请勿在 JSON 中包含该字段。
-
-可选字段及含义：
-- theme: 主题内容
-- content: 内容文案（图片上展示的具体文字内容）
-- colorTone: 色调倾向（如 "更蓝", "更暖", "更暗" 等）
-- style: 图片风格
-- scene: 场景描述
-- emotion: 情感基调
-- size: 图片尺寸或比例
-- targetAudience: 目标受众
-- usage: 使用场景
-- referenceImages: 参考图片（数组格式，包含 url 和 aspects 字段，如 [{"url": "图片链接", "aspects": ["借鉴方面"]}]）
-- includedElements: 包含元素（数组格式，如 [{"type": "image/text", "value": "图片链接/文字内容", "position": "放置位置", "note": "备注"}]）
-- otherRequirements: 其他需求（用户提到的但无法归类到以上字段的所有信息，全部记录在此）
-
-示例输出：
-{"colorTone": "深蓝色", "scene": "室内", "emotion": "更严肃", "otherRequirements": "希望整体感觉更加大气"}`;
-
-    try {
-      const response = await this.llmClient.invoke(
-        [{ role: 'user', content: refinePrompt }],
-        { model: 'doubao-seed-2-0-lite-260215', temperature: 0.3 },
-      );
-      const text = (response.content || '').trim();
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        // 过滤空值
-        Object.keys(parsed).forEach((key) => {
-          if (parsed[key] === '' || parsed[key] === null || parsed[key] === undefined) {
-            delete parsed[key];
-          }
-        });
-        console.log('[Refine] 解析出的修改:', parsed);
-        return parsed;
-      }
-    } catch (e) {
-      console.error('[Refine] 解析失败:', e);
-    }
-    return {};
-  }
 
   /**
    * 获取图片列表 - 从数据库加载用户的生成记录
