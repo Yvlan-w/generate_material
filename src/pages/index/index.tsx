@@ -110,8 +110,7 @@ const IndexPage = () => {
 
   const [temperatures, setTemperatures] = useState({
     extractNeeds: 0.3,
-    generatePrompts: 0.7,
-    generateImage: 0.7
+    generatePrompts: 0.7
   });
 
   useEffect(() => {
@@ -126,8 +125,7 @@ const IndexPage = () => {
     if (savedTemps && typeof savedTemps === 'object') {
       const parsedTemps = {
         extractNeeds: typeof savedTemps.extractNeeds === 'number' ? Math.round(savedTemps.extractNeeds * 100) / 100 : 0.3,
-        generatePrompts: typeof savedTemps.generatePrompts === 'number' ? Math.round(savedTemps.generatePrompts * 100) / 100 : 0.7,
-        generateImage: typeof savedTemps.generateImage === 'number' ? Math.round(savedTemps.generateImage * 100) / 100 : 0.7
+        generatePrompts: typeof savedTemps.generatePrompts === 'number' ? Math.round(savedTemps.generatePrompts * 100) / 100 : 0.7
       };
       setTemperatures(parsedTemps);
       console.log('IndexPage: loaded temperatures:', parsedTemps);
@@ -250,7 +248,6 @@ interface HomePageProps {
   temperatures: {
     extractNeeds: number;
     generatePrompts: number;
-    generateImage: number;
   };
 }
 
@@ -1296,12 +1293,10 @@ interface AdjustPageProps {
   temperatures: {
     extractNeeds: number;
     generatePrompts: number;
-    generateImage: number;
   };
   setTemperatures: React.Dispatch<React.SetStateAction<{
     extractNeeds: number;
     generatePrompts: number;
-    generateImage: number;
   }>>;
 }
 
@@ -1327,15 +1322,6 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
     const finalValue = Math.round(numValue / 100 * 100) / 100;
     console.log('generatePrompts changed:', finalValue);
     const newTemps = { ...temperatures, generatePrompts: finalValue };
-    setTemperatures(newTemps);
-    saveTemperatures(newTemps);
-  };
-
-  const handleGenerateImageChange = (value: any) => {
-    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures.generateImage * 100) : Number(value);
-    const finalValue = Math.round(numValue / 100 * 100) / 100;
-    console.log('generateImage changed:', finalValue);
-    const newTemps = { ...temperatures, generateImage: finalValue };
     setTemperatures(newTemps);
     saveTemperatures(newTemps);
   };
@@ -1506,68 +1492,35 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
                 </View>
               </View>
 
-              <View style={{ marginBottom: '20px' }}>
-                <View style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px'
-                }}>
-                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>风格自由度</Text>
-                  <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
-                    {temperatures.generateImage.toFixed(2)}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
-                  控制图片生成的风格自由度，数值越高画面风格变化越大，数值越低越贴近参考风格
-                </Text>
-                <Slider
-                  min={60}
-                  max={80}
-                  step={1}
-                  value={temperatures.generateImage * 100}
-                  onChange={handleGenerateImageChange}
-                  style={{ width: '100%', height: '6px' }}
-                  activeColor="#6366F1"
-                  backgroundColor="#E2E8F0"
-                  blockSize={18}
-                />
-                <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
-                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.6</Text>
-                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.8</Text>
-                </View>
-              </View>
-          </View>
-
-          <View style={{
-            backgroundColor: '#FEF2F2',
-            borderRadius: '16px',
-            padding: '20px',
-            border: '1px solid #FECACA'
-          }}>
-            <Text style={{ fontSize: '14px', color: '#DC2626', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
-              危险操作
-            </Text>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={handleClearImages}
-              disabled={clearing}
-              style={{
-                width: '100%',
-                borderColor: '#DC2626',
-                color: '#DC2626'
-              }}
-            >
-              <Text style={{ color: '#DC2626' }}>{clearing ? '清空中...' : '清空我的所有图片'}</Text>
-            </Button>
-            <Text style={{ fontSize: '12px', color: '#F87171', marginTop: '8px', display: 'block' }}>
-              此操作将删除您所有生成的图片，无法恢复，请谨慎操作
-            </Text>
+            <View style={{
+              backgroundColor: '#FEF2F2',
+              borderRadius: '16px',
+              padding: '20px',
+              border: '1px solid #FECACA'
+            }}>
+              <Text style={{ fontSize: '14px', color: '#DC2626', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
+                危险操作
+              </Text>
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={handleClearImages}
+                disabled={clearing}
+                style={{
+                  width: '100%',
+                  borderColor: '#DC2626',
+                  color: '#DC2626'
+                }}
+              >
+                <Text style={{ color: '#DC2626' }}>{clearing ? '清空中...' : '清空我的所有图片'}</Text>
+              </Button>
+              <Text style={{ fontSize: '12px', color: '#F87171', marginTop: '8px', display: 'block' }}>
+                此操作将删除您所有生成的图片，无法恢复，请谨慎操作
+              </Text>
+            </View>
           </View>
         </View>
-    </View>
+      </View>
   );
 };
 

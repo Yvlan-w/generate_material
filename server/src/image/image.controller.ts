@@ -33,7 +33,6 @@ export class ImageController {
     temperatures?: {
       extractNeeds?: number;
       generatePrompts?: number;
-      generateImage?: number;
     };
   }) {
     console.log('[API] Chat request:', body);

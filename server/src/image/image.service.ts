@@ -21,7 +21,6 @@ export interface SessionData {
   temperatures?: {
     extractNeeds?: number;
     generatePrompts?: number;
-    generateImage?: number;
   };
 }
 
@@ -184,7 +183,7 @@ export class ImageService {
    * 多轮对话接口 - 需求收集Agent
    * 根据当前状态决定下一步行动
    */
-  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>, referenceImages?: Array<{ url: string; aspects?: string[] }>, includedImages?: Array<{ url: string; position?: string; note?: string }>, temperatures?: { extractNeeds?: number; generatePrompts?: number; generateImage?: number }): Promise<ChatResponse> {
+  async chat(sessionId: string, message: string, currentStage: SessionStage, userId?: string, imageType?: 'reference' | 'included', imageUrls?: string[], imageDetails?: Array<{ url: string; aspects?: string[]; position?: string }>, referenceImages?: Array<{ url: string; aspects?: string[] }>, includedImages?: Array<{ url: string; position?: string; note?: string }>, temperatures?: { extractNeeds?: number; generatePrompts?: number }): Promise<ChatResponse> {
     console.log(`\n===========================================`);
     console.log(`[Chat] NEW REQUEST`);
     console.log(`[Chat] Session: ${sessionId}`);
@@ -640,7 +639,6 @@ export class ImageService {
         positivePrompt,
         negativePrompt,
         session.structuredNeeds,
-        session.temperatures?.generateImage,
       );
       console.log(`[Generation] Image generated: "${imageUrl}"`);
       session.generatedImage = imageUrl;
@@ -1206,7 +1204,6 @@ ${needsText}
     positivePrompt: string,
     negativePrompt: string,
     needs?: StructuredNeeds,
-    temperature?: number,
   ): Promise<string> {
     console.log('[Image] 生成图片');
 
@@ -1276,9 +1273,6 @@ ${needsText}
       `;
       
       console.log('[Image] 最终提示词:', finalPrompt);
-
-      const imageTemp = temperature ?? 0.7;
-      console.log(`[Image] Using temperature: ${imageTemp}`);
 
       const generateParams: {
         prompt: string;
@@ -1366,9 +1360,6 @@ ${needsText}
     `;
 
     console.log('[OtherStages] 最终提示词:', finalPrompt);
-
-    const imageTemp = session.temperatures?.generateImage ?? 0.7;
-    console.log(`[OtherStages] Using temperature: ${imageTemp}`);
 
     // 直接调用底层图片生成 API，携带原图作为参考
     const generateParams: {
@@ -1787,7 +1778,7 @@ ${needsText}
         console.log('[Adjust] 参考图片参数:', generateParams.image);
       }
 
-      const response = await this.imageClient.generate(generateParams as any);
+      const response = await this.imageClient.generate(generateParams as ImageGenerationRequest);
 
       const helper = this.imageClient.getResponseHelper(response);
 
