@@ -73,14 +73,6 @@ interface GalleryImage {
   isFavorite?: boolean;
 }
 
-interface ParamConfig {
-  param_name: string;
-  param_value: number;
-  min_value: number;
-  max_value: number;
-  step: number;
-  description: string;
-}
 
 const IndexPage = () => {
   const [currentTab, setCurrentTab] = useState<TabType>('home');
