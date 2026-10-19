@@ -39,14 +39,23 @@ export default function LoginPage() {
   const handleWechatLogin = async () => {
     try {
       setLoading(true)
-      const loginResult = await Taro.login()
-      const code = loginResult.code
-      console.log('小程序登录凭证:', code)
+      let code = ''
+      if (isMiniApp) {
+        // 小程序环境：获取真实微信凭证
+        const loginResult = await Taro.login()
+        code = loginResult.code || ''
+      } else {
+        // H5 环境：无法获取真实微信凭证，使用模拟 code（后端会走模拟登录）
+        code = `test_h5_${Date.now()}`
+      }
+      console.log('登录凭证:', code)
       setLoginCode(code)
       setLoginStep('chooseAvatar')
     } catch (error) {
       console.error('获取登录凭证失败:', error)
-      Taro.showToast({ title: '获取登录凭证失败', icon: 'error', duration: 2000 })
+      // 兜底：即使 Taro.login 异常也允许进入下一步（模拟登录）
+      setLoginCode(`test_h5_${Date.now()}`)
+      setLoginStep('chooseAvatar')
       setLoading(false)
     }
   }
@@ -91,7 +100,7 @@ export default function LoginPage() {
       })
 
       setTimeout(() => {
-        Taro.redirectTo({ url: '/pages/index/index' })
+        Taro.switchTab({ url: '/pages/index/index' })
       }, 1500)
 
     } catch (error: any) {

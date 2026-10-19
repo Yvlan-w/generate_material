@@ -43,16 +43,20 @@ export class AuthService {
    */
   private async getWechatOpenid(code: string): Promise<{ openid: string; session_key?: string } | null> {
     const { appId, secret } = this.getWechatConfig();
-    
+
+    // 空 code 兜底：H5/调试环境可能拿不到真实微信凭证
+    const safeCode = (code || '').trim();
     // 判断是否为开发环境的模拟 code（H5 端无法获取真实微信凭证）
     // 模拟 code 格式：test_h5_code 或 dev_openid_xxx
-    const isDevCode = code.startsWith('test_') || code.startsWith('dev_');
-    
+    const isDevCode = !safeCode || safeCode.startsWith('test_') || safeCode.startsWith('dev_');
+
     // 如果是开发模式或未配置凭证，使用模拟登录
     if (isDevCode || !appId || !secret) {
       console.log('[AuthService] 使用模拟登录模式（开发环境或未配置微信凭证）');
+      // 空 code 时使用随机标识，保证每个用户 openid 唯一且可重复登录
+      const codeSegment = safeCode ? safeCode.slice(0, 8) : `anon_${Date.now().toString(36)}`;
       return {
-        openid: isDevCode ? `dev_openid_${code.slice(0, 8)}` : `dev_openid_${code.slice(0, 8)}`,
+        openid: `dev_openid_${codeSegment}`,
         session_key: `dev_session_${Date.now()}`
       };
     }
