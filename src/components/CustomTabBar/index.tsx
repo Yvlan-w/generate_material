@@ -40,9 +40,13 @@ const CustomTabBar = () => {
       text: '图库',
       icon: Image,
       iconSize: 20
-    },
+    }
+  ]
+
+  // 管理员专属 Tab
+  const adminTabs: TabItem[] = [
     {
-      pagePath: '/pages/index/index?tab=adjust',
+      pagePath: '/pages/adjust/index',
       text: '参数配置',
       icon: Settings,
       iconSize: 20
@@ -50,11 +54,11 @@ const CustomTabBar = () => {
   ]
 
   // 根据权限动态生成 Tab 列表
-  const tabs = baseTabs
+  const tabs = isAdmin ? [...baseTabs, ...adminTabs] : baseTabs
 
   const handleTabClick = (tab: TabItem) => {
     if (currentPath === tab.pagePath) return
-    Taro.navigateTo({ url: tab.pagePath }).catch(() => {
+    Taro.switchTab({ url: tab.pagePath }).catch(() => {
       Taro.redirectTo({ url: tab.pagePath }).catch(err => {
         console.error('TabBar 跳转失败:', err)
       })

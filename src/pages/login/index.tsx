@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { View, Text, Image, Button as TaroButton, Input } from '@tarojs/components'
+// eslint-disable-next-line no-restricted-syntax -- 微信 openType="chooseAvatar" 头像选择能力必须使用原生 Button
+import { View, Text, Image, Button as TaroButton } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Network } from '@/network'
 import { Sparkles, ShieldCheck, LoaderCircle, User, ArrowRight } from 'lucide-react-taro'
 
@@ -118,14 +120,16 @@ export default function LoginPage() {
           fontSize: '20px',
           fontWeight: '600',
           color: '#1E293B'
-        }}>
+        }}
+        >
           用户登录
         </Text>
         <Text style={{
           fontSize: '14px',
           color: '#64748B',
           marginTop: '8px'
-        }}>
+        }}
+        >
           授权后可使用图片生成功能
         </Text>
       </View>
@@ -173,14 +177,16 @@ export default function LoginPage() {
           fontSize: '20px',
           fontWeight: '600',
           color: '#1E293B'
-        }}>
+        }}
+        >
           选择头像
         </Text>
         <Text style={{
           fontSize: '14px',
           color: '#64748B',
           marginTop: '8px'
-        }}>
+        }}
+        >
           请选择您的头像
         </Text>
       </View>
@@ -258,14 +264,16 @@ export default function LoginPage() {
           fontSize: '20px',
           fontWeight: '600',
           color: '#1E293B'
-        }}>
+        }}
+        >
           设置昵称
         </Text>
         <Text style={{
           fontSize: '14px',
           color: '#64748B',
           marginTop: '8px'
-        }}>
+        }}
+        >
           请输入您的昵称
         </Text>
       </View>
@@ -349,14 +357,16 @@ export default function LoginPage() {
           fontSize: '20px',
           fontWeight: '600',
           color: '#1E293B'
-        }}>
+        }}
+        >
           用户登录
         </Text>
         <Text style={{
           fontSize: '14px',
           color: '#64748B',
           marginTop: '8px'
-        }}>
+        }}
+        >
           当前为H5开发模式
         </Text>
       </View>
@@ -413,7 +423,8 @@ export default function LoginPage() {
         borderRadius: '8px',
         padding: '12px',
         marginTop: '20px'
-      }}>
+      }}
+      >
         <Text style={{ fontSize: '12px', color: '#B45309' }}>
           提示：微信头像和昵称授权仅在小程序中可用
         </Text>
@@ -427,7 +438,8 @@ export default function LoginPage() {
       flexDirection: 'column',
       minHeight: '100vh',
       backgroundColor: '#F8FAFC'
-    }}>
+    }}
+    >
       <View style={{
         display: 'flex',
         flexDirection: 'column',
@@ -435,7 +447,8 @@ export default function LoginPage() {
         justifyContent: 'center',
         paddingTop: '60px',
         paddingBottom: '30px'
-      }}>
+      }}
+      >
         <View style={{
           width: '80px',
           height: '80px',
@@ -446,7 +459,8 @@ export default function LoginPage() {
           justifyContent: 'center',
           boxShadow: '0 8px 24px rgba(59,130,246,0.3)',
           marginBottom: '20px'
-        }}>
+        }}
+        >
           <Sparkles size={40} color="#FFFFFF" />
         </View>
         <Text style={{ fontSize: '24px', fontWeight: '700', color: '#1E293B', marginBottom: '6px' }}>
@@ -461,7 +475,8 @@ export default function LoginPage() {
           paddingRight: '12px',
           paddingTop: '4px',
           paddingBottom: '4px'
-        }}>
+        }}
+        >
           投资咨询行业专属
         </Text>
       </View>
@@ -471,7 +486,8 @@ export default function LoginPage() {
         paddingLeft: '24px',
         paddingRight: '24px',
         paddingBottom: '48px'
-      }}>
+      }}
+      >
         <View style={{
           backgroundColor: '#FFFFFF',
           borderRadius: '24px',
@@ -480,7 +496,8 @@ export default function LoginPage() {
           border: '1px solid #E2E8F0',
           maxWidth: '320px',
           margin: '0 auto'
-        }}>
+        }}
+        >
           {isMiniApp ? (
             loginStep === 'init' ? renderInitStep() :
             loginStep === 'chooseAvatar' ? renderAvatarStep() :
@@ -496,7 +513,8 @@ export default function LoginPage() {
         paddingBottom: '32px',
         paddingLeft: '24px',
         paddingRight: '24px'
-      }}>
+      }}
+      >
         <Text style={{ fontSize: '12px', color: '#94A3B8' }}>
           登录即表示您同意我们的服务条款和隐私政策
         </Text>

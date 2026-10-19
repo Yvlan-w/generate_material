@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { View, Image, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { X } from 'lucide-react-taro'
+import { Network } from '@/network'
 
 interface ImagePreviewProps {
   imageUrl: string
@@ -26,7 +27,7 @@ const ImagePreview = ({ imageUrl, visible, onClose }: ImagePreviewProps) => {
 
   const handleDownload = () => {
     setShowActionSheet(false)
-    Taro.downloadFile({
+    Network.downloadFile({
       url: imageUrl,
       success: (res) => {
         if (res.statusCode === 200) {
@@ -103,7 +104,7 @@ const ImagePreview = ({ imageUrl, visible, onClose }: ImagePreviewProps) => {
 
   return (
     <View
-      className="fixed inset-0 z-[10000] bg-black/95 flex flex-col"
+      className="fixed inset-0 z-[10000] bg-black bg-opacity-95 flex flex-col"
       onClick={onClose}
     >
       <View
@@ -132,7 +133,7 @@ const ImagePreview = ({ imageUrl, visible, onClose }: ImagePreviewProps) => {
         onClick={(e) => e.stopPropagation()}
       >
         <View
-          className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-sm border border-white/30"
+          className="w-10 h-10 rounded-full bg-black bg-opacity-50 flex items-center justify-center backdrop-blur-sm border border-white border-opacity-30"
           onClick={onClose}
         >
           <X size={20} color="#fff" />
@@ -141,7 +142,7 @@ const ImagePreview = ({ imageUrl, visible, onClose }: ImagePreviewProps) => {
 
       {scale > 1 && (
         <View className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-          <Text className="text-white/70 text-sm">
+          <Text className="text-white text-opacity-70 text-sm">
             缩放比例: {Math.round(scale * 100)}%
           </Text>
         </View>
@@ -149,7 +150,7 @@ const ImagePreview = ({ imageUrl, visible, onClose }: ImagePreviewProps) => {
 
       {showActionSheet && (
         <View
-          className="fixed inset-0 z-[10001] bg-black/50 flex items-end"
+          className="fixed inset-0 z-[10001] bg-black bg-opacity-50 flex items-end"
           onClick={() => setShowActionSheet(false)}
         >
           <View

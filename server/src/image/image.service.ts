@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { LLMClient, ImageGenerationClient, Config, S3Storage } from 'coze-coding-dev-sdk';
+import { LLMClient, ImageGenerationClient, Config, S3Storage, ImageGenerationRequest } from 'coze-coding-dev-sdk';
 import { getSupabaseClient } from '../storage/database/supabase-client';
-import { text } from 'stream/consumers';
-import { ImageGenerationRequest } from 'coze-coding-dev-sdk';
 
 /**
  * 对话状态定义

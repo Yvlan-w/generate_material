@@ -19,7 +19,7 @@ const ScrollArea = React.forwardRef<
       scrollY={scrollY}
       scrollX={scrollX}
       scrollIntoView={scrollIntoView}
-      scrollWithAnimation={true}
+      scrollWithAnimation
       style={{
         overflowX: scrollX ? 'auto' : 'hidden',
         overflowY: scrollY ? 'auto' : 'hidden',

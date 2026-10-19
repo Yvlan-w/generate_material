@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Text, Image, Textarea, Slider } from '@tarojs/components';
+import { View, Text, Image } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Textarea as UiTextarea } from '@/components/ui/textarea';
+import { Slider as UiSlider } from '@/components/ui/slider';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
@@ -76,7 +78,6 @@ interface GalleryImage {
 
 const IndexPage = () => {
   const [currentTab, setCurrentTab] = useState<TabType>('home');
-  const [isAdmin, setIsAdmin] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
 
   const [messages, setMessages] = useState<Message[]>([
@@ -106,9 +107,6 @@ const IndexPage = () => {
   });
 
   useEffect(() => {
-    const adminFlag = Taro.getStorageSync('isAdmin');
-    setIsAdmin(adminFlag === true);
-
     const info = Taro.getStorageSync('userInfo');
     console.log('IndexPage: loaded userInfo from storage:', info);
     setUserInfo(info);
@@ -206,9 +204,9 @@ const IndexPage = () => {
           <Text className="text-xs mt-1" style={{ color: currentTab === 'gallery' ? '#1E40AF' : '#6B7280' }}>图库</Text>
         </View>
         <View
-            className="flex-1 flex flex-col items-center justify-center py-1"
-            onClick={() => setCurrentTab('adjust')}
-          >
+          className="flex-1 flex flex-col items-center justify-center py-1"
+          onClick={() => setCurrentTab('adjust')}
+        >
             <Settings size={22} color={currentTab === 'adjust' ? '#1E40AF' : '#6B7280'} />
             <Text className="text-xs mt-1" style={{ color: currentTab === 'adjust' ? '#1E40AF' : '#6B7280' }}>配置</Text>
           </View>
@@ -525,7 +523,8 @@ const HomePage = ({
           borderRadius: '16px',
           border: 'none',
           backgroundColor: '#F8FAFC'
-        }}>
+        }}
+        >
           <CardContent style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
             <LoaderCircle size={16} color="#64748B" className="mr-2" style={{ animation: 'spin 1s linear infinite' }} />
             <Text className="text-sm text-gray-500">{message.content}</Text>
@@ -541,7 +540,8 @@ const HomePage = ({
           borderRadius: '16px',
           border: 'none',
           backgroundColor: '#ECFDF5'
-        }}>
+        }}
+        >
           <CardContent style={{ padding: '12px 16px', display: 'flex', alignItems: 'center' }}>
             <Check size={16} color="#059669" className="mr-2" />
             <Text className="text-sm text-green-700">{message.content}</Text>
@@ -557,7 +557,8 @@ const HomePage = ({
           borderRadius: '16px',
           border: '1px solid #FCA5A5',
           backgroundColor: '#FEF2F2'
-        }}>
+        }}
+        >
           <CardContent style={{ padding: '12px 16px' }}>
             <View style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '8px' }}>
               <TriangleAlert size={16} color="#DC2626" className="mr-2 flex-shrink-0" />
@@ -576,7 +577,8 @@ const HomePage = ({
           boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           border: 'none',
           backgroundColor: isUser ? '#EFF6FF' : '#FFFFFF'
-        }}>
+        }}
+        >
           <CardContent style={{ padding: '12px' }}>
             {isUser && message.content && (
               <Text className="block text-sm whitespace-pre-wrap mb-3" style={{ lineHeight: '1.6' }}>
@@ -604,7 +606,8 @@ const HomePage = ({
                 flexWrap: 'wrap',
                 gap: '8px',
                 marginTop: '8px'
-              }}>
+              }}
+              >
                 {message.data.imageUrls.slice(1).map((url: string, index: number) => {
                   const detail = message.data.imageDetails?.[index + 1];
                   return (
@@ -647,7 +650,8 @@ const HomePage = ({
         borderRadius: isUser ? '16px' : '16px',
         border: 'none',
         backgroundColor: isUser ? '#EFF6FF' : '#FFFFFF'
-      }}>
+      }}
+      >
         <CardContent style={{ padding: '12px 16px' }}>
           <Text className="text-sm whitespace-pre-wrap" style={{ lineHeight: '1.6' }}>
             {message.content}
@@ -901,7 +905,7 @@ const HomePage = ({
                           )}
                           <View style={{ marginTop: '12px' }}>
                             <Text className="block text-sm font-medium text-gray-700 mb-2">图片备注</Text>
-                            <Textarea
+                            <UiTextarea
                               style={{ width: '100%', minHeight: '60px', fontSize: '13px', backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px' }}
                               placeholder="请描述这张图片是什么，以及希望如何处理它。例如：这是XX公司的logo，希望保持原有的颜色和比例..."
                               value={editingImg.note || ''}
@@ -1093,7 +1097,8 @@ const GalleryPage = () => {
             backgroundColor: '#F1F5F9',
             borderRadius: '12px',
             padding: '4px'
-          }}>
+          }}
+          >
             <View
               style={{
                 flex: 1,
@@ -1111,7 +1116,8 @@ const GalleryPage = () => {
                 fontSize: '14px',
                 fontWeight: activeTab === 'all' ? '500' : '400',
                 color: activeTab === 'all' ? '#1E293B' : '#64748B'
-              }}>全部</Text>
+              }}
+              >全部</Text>
             </View>
             <View
               style={{
@@ -1130,7 +1136,8 @@ const GalleryPage = () => {
                 fontSize: '14px',
                 fontWeight: activeTab === 'favorite' ? '500' : '400',
                 color: activeTab === 'favorite' ? '#1E293B' : '#64748B'
-              }}>已收藏</Text>
+              }}
+              >已收藏</Text>
             </View>
           </View>
         </View>
@@ -1142,20 +1149,23 @@ const GalleryPage = () => {
               alignItems: 'center',
               justifyContent: 'center',
               paddingTop: '100px'
-            }}>
+            }}
+            >
               <ImageOff size={48} color="#CBD5E1" />
               <Text style={{
                 fontSize: '16px',
                 color: '#64748B',
                 marginTop: '16px'
-              }}>
+              }}
+              >
                 暂无图片
               </Text>
               <Text style={{
                 fontSize: '14px',
                 color: '#94A3B8',
                 marginTop: '8px'
-              }}>
+              }}
+              >
                 去首页生成您的第一张营销素材吧！
               </Text>
             </View>
@@ -1164,7 +1174,8 @@ const GalleryPage = () => {
               display: 'grid',
               gridTemplateColumns: 'repeat(2, 1fr)',
               gap: '12px'
-            }}>
+            }}
+            >
               {images.map((image) => (
                 <View
                   key={image.id}
@@ -1181,7 +1192,8 @@ const GalleryPage = () => {
                     aspectRatio: '1',
                     backgroundColor: '#F1F5F9',
                     position: 'relative'
-                  }}>
+                  }}
+                  >
                     {failedImages.has(image.id) ? (
                       <View style={{
                         width: '100%',
@@ -1189,7 +1201,8 @@ const GalleryPage = () => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center'
-                      }}>
+                      }}
+                      >
                         <ImageOff size={24} color="#94A3B8" />
                       </View>
                     ) : (
@@ -1226,19 +1239,22 @@ const GalleryPage = () => {
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       paddingBottom: '4px'
-                    }}>
+                    }}
+                    >
                       <Text style={{
                         fontSize: '12px',
                         color: image.status === '合规通过' ? '#047857' : '#B45309',
                         fontWeight: '500'
-                      }}>
+                      }}
+                      >
                         {image.status}
                       </Text>
                     </View>
                     <Text style={{
                       fontSize: '12px',
                       color: '#94A3B8'
-                    }}>
+                    }}
+                    >
                       {image.time}
                     </Text>
                   </View>
@@ -1254,7 +1270,8 @@ const GalleryPage = () => {
             paddingRight: '20px',
             paddingTop: '16px',
             paddingBottom: '20px'
-          }}>
+          }}
+          >
             <Button
               style={{
                 width: '100%',
@@ -1362,12 +1379,14 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
             padding: '16px',
             marginBottom: '16px',
             border: '1px solid #E2E8F0'
-          }}>
+          }}
+          >
             <View style={{
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center'
-            }}>
+            }}
+            >
               <View style={{
                 width: '48px',
                 height: '48px',
@@ -1377,7 +1396,8 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginRight: '12px'
-              }}>
+              }}
+              >
                 {userInfo?.avatar_url ? (
                   <Image
                     src={userInfo.avatar_url}
@@ -1407,13 +1427,15 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
             padding: '20px',
             border: '1px solid #E2E8F0',
             marginBottom: '16px'
-          }}>
+          }}
+          >
             <View style={{
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
               marginBottom: '16px'
-            }}>
+            }}
+            >
               <Settings size={20} color="#1E40AF" style={{ marginRight: '8px' }} />
               <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1E293B' }}>生成参数调整</Text>
             </View>
@@ -1425,7 +1447,8 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   marginBottom: '8px'
-                }}>
+                }}
+                >
                   <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>理解精准度</Text>
                   <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
                     {temperatures.extractNeeds.toFixed(2)}
@@ -1434,16 +1457,13 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
                 <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
                   控制AI理解您需求的精准程度，数值越低越严格按您的描述执行，数值越高越可能发挥创意
                 </Text>
-                <Slider
+                <UiSlider
                   min={20}
                   max={40}
                   step={1}
-                  value={temperatures.extractNeeds * 100}
-                  onChange={handleExtractNeedsChange}
-                  style={{ width: '100%', height: '6px' }}
-                  activeColor="#6366F1"
-                  backgroundColor="#E2E8F0"
-                  blockSize={18}
+                  value={[temperatures.extractNeeds * 100]}
+                  onValueChange={(val) => handleExtractNeedsChange(val[0])}
+                  className="w-full"
                 />
                 <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
                   <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.2</Text>
@@ -1458,7 +1478,8 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   marginBottom: '8px'
-                }}>
+                }}
+                >
                   <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>创意丰富度</Text>
                   <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
                     {temperatures.generatePrompts.toFixed(2)}
@@ -1467,16 +1488,13 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
                 <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
                   控制提示词生成的创意程度，数值越高提示词越丰富多样，数值越低越简洁直白
                 </Text>
-                <Slider
+                <UiSlider
                   min={60}
                   max={80}
                   step={1}
-                  value={temperatures.generatePrompts * 100}
-                  onChange={handleGeneratePromptsChange}
-                  style={{ width: '100%', height: '6px' }}
-                  activeColor="#6366F1"
-                  backgroundColor="#E2E8F0"
-                  blockSize={18}
+                  value={[temperatures.generatePrompts * 100]}
+                  onValueChange={(val) => handleGeneratePromptsChange(val[0])}
+                  className="w-full"
                 />
                 <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
                   <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.6</Text>
@@ -1489,7 +1507,8 @@ const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps
               borderRadius: '16px',
               padding: '20px',
               border: '1px solid #FECACA'
-            }}>
+            }}
+            >
               <Text style={{ fontSize: '14px', color: '#DC2626', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
                 危险操作
               </Text>
