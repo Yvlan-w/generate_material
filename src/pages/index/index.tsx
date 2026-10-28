@@ -4,12 +4,15 @@ import Taro from '@tarojs/taro';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea as UiTextarea } from '@/components/ui/textarea';
+import { Slider as UiSlider } from '@/components/ui/slider';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Network } from '@/network';
-import { Send, TriangleAlert, Check, LoaderCircle, Image as ImageIcon, RefreshCw } from 'lucide-react-taro';
+import { Send, TriangleAlert, Check, LoaderCircle, Image as ImageIcon, House, Settings, RefreshCw, ImageOff, Star } from 'lucide-react-taro';
 import ImagePreview from '@/components/ImagePreview';
 import './index.css';
+
+type TabType = 'home' | 'gallery' | 'adjust';
 
 interface Message {
   id: string;
@@ -63,7 +66,20 @@ interface PendingImage {
   note?: string;
 }
 
+interface GalleryImage {
+  id: string;
+  url: string;
+  status: string;
+  time: string;
+  needs?: any;
+  isFavorite?: boolean;
+}
+
+
 const IndexPage = () => {
+  const [currentTab, setCurrentTab] = useState<TabType>('home');
+  const [userInfo, setUserInfo] = useState<any>(null);
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'init',
@@ -91,6 +107,10 @@ const IndexPage = () => {
   });
 
   useEffect(() => {
+    const info = Taro.getStorageSync('userInfo');
+    console.log('IndexPage: loaded userInfo from storage:', info);
+    setUserInfo(info);
+
     const savedTemps = Taro.getStorageSync('temperatures');
     if (savedTemps && typeof savedTemps === 'object') {
       const parsedTemps = {
@@ -106,6 +126,15 @@ const IndexPage = () => {
     if (!isLoggedIn) {
       Taro.redirectTo({ url: '/pages/login/index' });
       return;
+    }
+
+    const pages = Taro.getCurrentPages();
+    if (pages.length > 0) {
+      const currentPage = pages[pages.length - 1];
+      const options = (currentPage as any).options || {};
+      if (options.tab && (options.tab === 'gallery' || options.tab === 'adjust')) {
+        setCurrentTab(options.tab as TabType);
+      }
     }
   }, []);
 
@@ -129,28 +158,59 @@ const IndexPage = () => {
 
   return (
     <View className="min-h-screen bg-gray-50">
-      <HomePage
-        messages={messages}
-        setMessages={setMessages}
-        inputValue={inputValue}
-        setInputValue={setInputValue}
-        isProcessing={isProcessing}
-        setIsProcessing={setIsProcessing}
-        sessionState={sessionState}
-        setSessionState={setSessionState}
-        imagesToSend={imagesToSend}
-        setImagesToSend={setImagesToSend}
-        scrollToId={scrollToId}
-        setScrollToId={setScrollToId}
-        previewImage={previewImage}
-        setPreviewImage={setPreviewImage}
-        showPreview={showPreview}
-        setShowPreview={setShowPreview}
-        editImageId={editImageId}
-        setEditImageId={setEditImageId}
-        handleRestartChat={handleRestartChat}
-        temperatures={temperatures}
-      />
+      {currentTab === 'home' && (
+        <HomePage
+          messages={messages}
+          setMessages={setMessages}
+          inputValue={inputValue}
+          setInputValue={setInputValue}
+          isProcessing={isProcessing}
+          setIsProcessing={setIsProcessing}
+          sessionState={sessionState}
+          setSessionState={setSessionState}
+          imagesToSend={imagesToSend}
+          setImagesToSend={setImagesToSend}
+          scrollToId={scrollToId}
+          setScrollToId={setScrollToId}
+          previewImage={previewImage}
+          setPreviewImage={setPreviewImage}
+          showPreview={showPreview}
+          setShowPreview={setShowPreview}
+          editImageId={editImageId}
+          setEditImageId={setEditImageId}
+          handleRestartChat={handleRestartChat}
+          temperatures={temperatures}
+        />
+      )}
+      {currentTab === 'gallery' && <GalleryPage />}
+      {currentTab === 'adjust' && <AdjustPage userInfo={userInfo} temperatures={temperatures} setTemperatures={setTemperatures} />}
+
+      <View
+        className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-14 z-50 pb-safe"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <View
+          className="flex-1 flex flex-col items-center justify-center py-1"
+          onClick={() => setCurrentTab('home')}
+        >
+          <House size={22} color={currentTab === 'home' ? '#1E40AF' : '#6B7280'} />
+          <Text className="text-xs mt-1" style={{ color: currentTab === 'home' ? '#1E40AF' : '#6B7280' }}>首页</Text>
+        </View>
+        <View
+          className="flex-1 flex flex-col items-center justify-center py-1"
+          onClick={() => setCurrentTab('gallery')}
+        >
+          <ImageIcon size={22} color={currentTab === 'gallery' ? '#1E40AF' : '#6B7280'} />
+          <Text className="text-xs mt-1" style={{ color: currentTab === 'gallery' ? '#1E40AF' : '#6B7280' }}>图库</Text>
+        </View>
+        <View
+          className="flex-1 flex flex-col items-center justify-center py-1"
+          onClick={() => setCurrentTab('adjust')}
+        >
+            <Settings size={22} color={currentTab === 'adjust' ? '#1E40AF' : '#6B7280'} />
+            <Text className="text-xs mt-1" style={{ color: currentTab === 'adjust' ? '#1E40AF' : '#6B7280' }}>配置</Text>
+          </View>
+      </View>
     </View>
   );
 };
@@ -985,5 +1045,527 @@ const HomePage = ({
   );
 };
 
+const GalleryPage = () => {
+  const [images, setImages] = useState<GalleryImage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const [previewImage, setPreviewImage] = useState<string>('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'favorite'>('all');
+
+  useEffect(() => {
+    loadImages();
+  }, [activeTab]);
+
+  const loadImages = async () => {
+    setLoading(true);
+    try {
+      const userInfo = Taro.getStorageSync('userInfo');
+      const userId = userInfo?.id || '';
+      const requestData: Record<string, any> = {
+        filter: activeTab === 'favorite' ? 'favorite' : ''
+      };
+      if (userId) {
+        requestData.userId = userId;
+      }
+      const response = await Network.request({
+        url: '/api/image/list',
+        method: 'GET',
+        data: requestData
+      });
+
+      if (response.data.code === 200) {
+        const imageList = response.data.data?.images || response.data.data || [];
+        setImages(imageList.map((img: any) => ({
+          id: img.id,
+          url: img.url,
+          status: img.status || '合规通过',
+          time: img.time || '',
+          needs: img.prompt || img.description || '',
+          isFavorite: img.isFavorite || false
+        })));
+      }
+    } catch (error) {
+      console.error('获取图片列表失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleFavorite = async (imageId: string) => {
+    try {
+      const response = await Network.request({
+        url: '/api/image/favorite',
+        method: 'POST',
+        data: { imageId }
+      });
+
+      if (response.data.code === 200) {
+        const { isFavorite } = response.data.data;
+        setImages(prev => prev.map(img => 
+          img.id === imageId ? { ...img, isFavorite } : img
+        ));
+      }
+    } catch (error) {
+      console.error('切换收藏失败:', error);
+    }
+  };
+
+  const handleImageClick = (_id: string, url: string) => {
+    setPreviewImage(url);
+    setShowPreview(true);
+  };
+
+  const handleImageError = (id: string) => {
+    setFailedImages(prev => new Set([...prev, id]));
+  };
+
+  return (
+    <View className="min-h-screen bg-gray-50 pb-20">
+      <ScrollArea style={{ height: 'calc(100vh - 80px)' }}>
+        <View style={{ padding: '16px', paddingBottom: '8px' }}>
+          <View style={{
+            display: 'flex',
+            flexDirection: 'row',
+            backgroundColor: '#F1F5F9',
+            borderRadius: '12px',
+            padding: '4px'
+          }}
+          >
+            <View
+              style={{
+                flex: 1,
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: activeTab === 'all' ? '#FFFFFF' : 'transparent',
+                boxShadow: activeTab === 'all' ? '0 2px 4px rgba(0,0,0,0.04)' : 'none'
+              }}
+              onClick={() => setActiveTab('all')}
+            >
+              <Text style={{
+                fontSize: '14px',
+                fontWeight: activeTab === 'all' ? '500' : '400',
+                color: activeTab === 'all' ? '#1E293B' : '#64748B'
+              }}
+              >全部</Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: activeTab === 'favorite' ? '#FFFFFF' : 'transparent',
+                boxShadow: activeTab === 'favorite' ? '0 2px 4px rgba(0,0,0,0.04)' : 'none'
+              }}
+              onClick={() => setActiveTab('favorite')}
+            >
+              <Text style={{
+                fontSize: '14px',
+                fontWeight: activeTab === 'favorite' ? '500' : '400',
+                color: activeTab === 'favorite' ? '#1E293B' : '#64748B'
+              }}
+              >已收藏</Text>
+            </View>
+          </View>
+        </View>
+        <View style={{ padding: '0 16px' }}>
+          {images.length === 0 && !loading ? (
+            <View style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingTop: '100px'
+            }}
+            >
+              <ImageOff size={48} color="#CBD5E1" />
+              <Text style={{
+                fontSize: '16px',
+                color: '#64748B',
+                marginTop: '16px'
+              }}
+              >
+                暂无图片
+              </Text>
+              <Text style={{
+                fontSize: '14px',
+                color: '#94A3B8',
+                marginTop: '8px'
+              }}
+              >
+                去首页生成您的第一张营销素材吧！
+              </Text>
+            </View>
+          ) : (
+            <View style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '12px'
+            }}
+            >
+              {images.map((image) => (
+                <View
+                  key={image.id}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                    border: '1px solid #E2E8F0'
+                  }}
+                  onClick={() => handleImageClick(image.id, image.url)}
+                >
+                  <View style={{
+                    aspectRatio: '1',
+                    backgroundColor: '#F1F5F9',
+                    position: 'relative'
+                  }}
+                  >
+                    {failedImages.has(image.id) ? (
+                      <View style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      >
+                        <ImageOff size={24} color="#94A3B8" />
+                      </View>
+                    ) : (
+                      <Image
+                        src={image.url}
+                        mode="aspectFill"
+                        style={{ width: '100%', height: '100%' }}
+                        onError={() => handleImageError(image.id)}
+                      />
+                    )}
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10
+                      }}
+                      onClick={(e) => { e.stopPropagation(); handleToggleFavorite(image.id); }}
+                    >
+                      <Star size={16} color={image.isFavorite ? '#FBBF24' : '#FFFFFF'} style={{ opacity: image.isFavorite ? 1 : 0.6 }} />
+                    </View>
+                  </View>
+                  <View style={{ padding: '12px' }}>
+                    <View style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingBottom: '4px'
+                    }}
+                    >
+                      <Text style={{
+                        fontSize: '12px',
+                        color: image.status === '合规通过' ? '#047857' : '#B45309',
+                        fontWeight: '500'
+                      }}
+                      >
+                        {image.status}
+                      </Text>
+                    </View>
+                    <Text style={{
+                      fontSize: '12px',
+                      color: '#94A3B8'
+                    }}
+                    >
+                      {image.time}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {images.length > 0 && (
+          <View style={{
+            paddingLeft: '20px',
+            paddingRight: '20px',
+            paddingTop: '16px',
+            paddingBottom: '20px'
+          }}
+          >
+            <Button
+              style={{
+                width: '100%',
+                backgroundColor: '#F1F5F9',
+                borderRadius: '12px',
+                height: '44px'
+              }}
+              onClick={loadImages}
+            >
+              <RefreshCw size={16} color="#64748B" style={{ marginRight: '8px' }} />
+              <Text style={{ fontSize: '14px', color: '#64748B' }}>刷新列表</Text>
+            </Button>
+          </View>
+        )}
+      </ScrollArea>
+
+      <ImagePreview
+        imageUrl={previewImage}
+        visible={showPreview}
+        onClose={() => setShowPreview(false)}
+      />
+    </View>
+  );
+};
+
+interface AdjustPageProps {
+  userInfo: any;
+  temperatures: {
+    extractNeeds: number;
+    generatePrompts: number;
+  };
+  setTemperatures: React.Dispatch<React.SetStateAction<{
+    extractNeeds: number;
+    generatePrompts: number;
+  }>>;
+}
+
+const AdjustPage = ({ userInfo, temperatures, setTemperatures }: AdjustPageProps) => {
+  const [clearing, setClearing] = useState(false);
+
+  const saveTemperatures = (newTemps: typeof temperatures) => {
+    Taro.setStorageSync('temperatures', newTemps);
+    console.log('Saved temperatures:', newTemps);
+  };
+
+  const handleExtractNeedsChange = (value: any) => {
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures.extractNeeds * 100) : Number(value);
+    const finalValue = Math.round(numValue / 100 * 100) / 100;
+    console.log('extractNeeds changed:', finalValue);
+    const newTemps = { ...temperatures, extractNeeds: finalValue };
+    setTemperatures(newTemps);
+    saveTemperatures(newTemps);
+  };
+
+  const handleGeneratePromptsChange = (value: any) => {
+    const numValue = typeof value === 'object' ? (value.detail?.value ?? temperatures.generatePrompts * 100) : Number(value);
+    const finalValue = Math.round(numValue / 100 * 100) / 100;
+    console.log('generatePrompts changed:', finalValue);
+    const newTemps = { ...temperatures, generatePrompts: finalValue };
+    setTemperatures(newTemps);
+    saveTemperatures(newTemps);
+  };
+
+  const handleClearImages = async () => {
+    if (!userInfo?.id) {
+      Taro.showToast({ title: '请先登录', icon: 'none' });
+      return;
+    }
+
+    Taro.showModal({
+      title: '确认清空',
+      content: '确定要清空您所有生成的图片吗？此操作不可恢复。',
+      success: async (res) => {
+        if (res.confirm) {
+          try {
+            setClearing(true);
+            const response = await Network.request({
+              url: '/api/image/clear',
+              method: 'POST',
+              data: { userId: userInfo.id }
+            });
+
+            if (response.data.code === 200) {
+              Taro.showToast({ title: '图片已清空', icon: 'success' });
+            } else {
+              Taro.showToast({ title: '清空失败', icon: 'error' });
+            }
+          } catch (error) {
+            console.error('清空失败:', error);
+            Taro.showToast({ title: '网络异常', icon: 'error' });
+          } finally {
+            setClearing(false);
+          }
+        }
+      }
+    });
+  };
+
+  return (
+    <View className="min-h-screen bg-gray-50 pb-24">
+      <View style={{ padding: '16px', paddingBottom: '80px' }}>
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: '16px',
+            padding: '16px',
+            marginBottom: '16px',
+            border: '1px solid #E2E8F0'
+          }}
+          >
+            <View style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center'
+            }}
+            >
+              <View style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '50%',
+                backgroundColor: '#E0E7FF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: '12px'
+              }}
+              >
+                {userInfo?.avatar_url ? (
+                  <Image
+                    src={userInfo.avatar_url}
+                    mode="aspectFill"
+                    style={{ width: '100%', height: '100%', borderRadius: '50%' }}
+                  />
+                ) : (
+                  <Text style={{ fontSize: '18px', color: '#6366F1', fontWeight: '600' }}>
+                    {userInfo?.nickname?.charAt(0) || '用'}
+                  </Text>
+                )}
+              </View>
+              <View>
+                <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1E293B' }}>
+                  {userInfo?.nickname || '未登录'}
+                </Text>
+                <Text style={{ fontSize: '12px', color: '#64748B', marginTop: '4px', display: 'block' }}>
+                  {userInfo?.id ? `用户ID: ${userInfo.id.substring(0, 8)}...` : '请登录以使用完整功能'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: '16px',
+            padding: '20px',
+            border: '1px solid #E2E8F0',
+            marginBottom: '16px'
+          }}
+          >
+            <View style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: '16px'
+            }}
+            >
+              <Settings size={20} color="#1E40AF" style={{ marginRight: '8px' }} />
+              <Text style={{ fontSize: '16px', fontWeight: '600', color: '#1E293B' }}>生成参数调整</Text>
+            </View>
+
+            <View style={{ marginBottom: '20px' }}>
+                <View style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
+                }}
+                >
+                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>理解精准度</Text>
+                  <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
+                    {temperatures.extractNeeds.toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
+                  控制AI理解您需求的精准程度，数值越低越严格按您的描述执行，数值越高越可能发挥创意
+                </Text>
+                <UiSlider
+                  min={20}
+                  max={40}
+                  step={1}
+                  value={[temperatures.extractNeeds * 100]}
+                  onValueChange={(val) => handleExtractNeedsChange(val[0])}
+                  className="w-full"
+                />
+                <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.2</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.4</Text>
+                </View>
+              </View>
+
+              <View style={{ marginBottom: '20px' }}>
+                <View style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
+                }}
+                >
+                  <Text style={{ fontSize: '14px', color: '#334155', fontWeight: '500' }}>创意丰富度</Text>
+                  <Text style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>
+                    {temperatures.generatePrompts.toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: '12px', color: '#64748B', marginBottom: '12px', display: 'block', lineHeight: '1.5' }}>
+                  控制提示词生成的创意程度，数值越高提示词越丰富多样，数值越低越简洁直白
+                </Text>
+                <UiSlider
+                  min={60}
+                  max={80}
+                  step={1}
+                  value={[temperatures.generatePrompts * 100]}
+                  onValueChange={(val) => handleGeneratePromptsChange(val[0])}
+                  className="w-full"
+                />
+                <View style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.6</Text>
+                  <Text style={{ fontSize: '12px', color: '#94A3B8' }}>0.8</Text>
+                </View>
+              </View>
+
+            <View style={{
+              backgroundColor: '#FEF2F2',
+              borderRadius: '16px',
+              padding: '20px',
+              border: '1px solid #FECACA'
+            }}
+            >
+              <Text style={{ fontSize: '14px', color: '#DC2626', fontWeight: '500', marginBottom: '8px', display: 'block' }}>
+                危险操作
+              </Text>
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={handleClearImages}
+                disabled={clearing}
+                style={{
+                  width: '100%',
+                  borderColor: '#DC2626',
+                  color: '#DC2626'
+                }}
+              >
+                <Text style={{ color: '#DC2626' }}>{clearing ? '清空中...' : '清空我的所有图片'}</Text>
+              </Button>
+              <Text style={{ fontSize: '12px', color: '#F87171', marginTop: '8px', display: 'block' }}>
+                此操作将删除您所有生成的图片，无法恢复，请谨慎操作
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+  );
+};
 
 export default IndexPage;
