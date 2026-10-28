@@ -209,15 +209,7 @@ export default function LoginPage() {
               placeholder="请输入昵称"
               value={nickname}
               onInput={(e: any) => setNickname(e.detail?.value || '')}
-              style={{
-                width: '100%',
-                height: '48px',
-                backgroundColor: '#F8FAFC',
-                borderRadius: '12px',
-                fontSize: '14px',
-                border: '1px solid #E2E8F0',
-                boxSizing: 'border-box'
-              }}
+              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 text-sm"
             />
           </View>
 
