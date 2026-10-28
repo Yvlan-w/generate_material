@@ -31,7 +31,7 @@ export default defineAppConfig({
       },
       {
         pagePath: 'pages/adjust/index',
-        text: '微调',
+        text: '配置',
         iconPath: './assets/tabbar/settings.png',
         selectedIconPath: './assets/tabbar/settings-active.png'
       }
