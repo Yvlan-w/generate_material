@@ -441,83 +441,50 @@ const HomePage = ({
     }
   };
 
-  const doUploadFiles = async (files: { path?: string; raw?: File }[]) => {
-    Taro.showLoading({ title: '上传图片中...' });
-    const newImages: PendingImage[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      try {
-        let responseData: any;
-        if (file.raw) {
-          // H5 端：取原始 File 对象，手动构建 FormData 上传（绕过 Taro.uploadFile 的 blob 拦截）
-          const formData = new FormData();
-          formData.append('image', file.raw);
-          const resp = await fetch('/api/image/upload', { method: 'POST', body: formData });
-          responseData = await resp.json();
-        } else {
-          // 小程序端：使用 Network.uploadFile
-          const uploadResult: any = await Network.uploadFile({
-            url: '/api/image/upload',
-            filePath: file.path!,
-            name: 'image'
-          });
-          responseData = typeof uploadResult.data === 'string'
-            ? JSON.parse(uploadResult.data)
-            : uploadResult.data;
-        }
-        if (responseData.code === 200 && responseData.data?.url) {
-          newImages.push({
-            id: `img_${Date.now()}_${i}`,
-            url: responseData.data.url,
-            imageType: undefined,
-            aspects: [],
-            customAspect: '',
-            position: '',
-            note: ''
-          });
-        } else {
-          Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
-        }
-      } catch (error) {
-        console.error('上传图片失败:', error);
-        Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
-      }
-    }
-    Taro.hideLoading();
-    if (newImages.length > 0) {
-      setImagesToSend(prev => [...prev, ...newImages]);
-      setEditImageId(newImages[0].id);
-    }
-  };
-
   const handleImageUpload = async () => {
-    const env = Taro.getEnv();
-    const isMiniApp = env === Taro.ENV_TYPE.WEAPP || env === Taro.ENV_TYPE.TT;
-    if (isMiniApp) {
-      Taro.chooseImage({
-        count: 9,
-        sizeType: ['compressed'],
-        sourceType: ['album', 'camera'],
-        success: (res) => {
-          const files = res.tempFilePaths.map(path => ({ path }));
-          void doUploadFiles(files);
+    Taro.chooseImage({
+      count: 9,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: async (res) => {
+        Taro.showLoading({ title: '上传图片中...' });
+        const newImages: PendingImage[] = [];
+        for (let i = 0; i < res.tempFilePaths.length; i++) {
+          const path = res.tempFilePaths[i];
+          try {
+            const uploadResult = await Network.uploadFile({
+              url: '/api/image/upload',
+              filePath: path,
+              name: 'image'
+            });
+            const responseData = typeof uploadResult.data === 'string' 
+              ? JSON.parse(uploadResult.data) 
+              : uploadResult.data;
+            if (responseData.code === 200 && responseData.data?.url) {
+              newImages.push({
+                id: `img_${Date.now()}_${i}`,
+                url: responseData.data.url,
+                imageType: undefined,
+                aspects: [],
+                customAspect: '',
+                position: '',
+                note: ''
+              });
+            } else {
+              Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
+            }
+          } catch (error) {
+            console.error('上传图片失败:', error);
+            Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
+          }
         }
-      });
-      return;
-    }
-    // H5 端：DOM input file 选取原始 File 对象
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true;
-    input.onchange = (e) => {
-      const fileList = (e.target as HTMLInputElement).files;
-      if (!fileList || fileList.length === 0) return;
-      const raws = Array.from(fileList).map(raw => ({ raw }));
-      void doUploadFiles(raws);
-      input.value = '';
-    };
-    input.click();
+        Taro.hideLoading();
+        if (newImages.length > 0) {
+          setImagesToSend(prev => [...prev, ...newImages]);
+          setEditImageId(newImages[0].id);
+        }
+      }
+    });
   };
 
   const removePendingImage = (id: string) => {
