@@ -1093,7 +1093,7 @@ ${sizeHint ? `- 建议尺寸/比例：${sizeHint}` : ''}
     const complianceBannerText = `，图片底部添加合规标语：${complianceBanner}`;
 
     return {
-      positivePrompt: `${fallbackParts.join('，')}，专业商务摄影，高清，构图专业，符合投资咨询行业形象${complianceBannerText}`,
+      positivePrompt: `${fallbackParts.join('，')}，专业商务摄影，高清，构图专业，符合投资咨询行业形象${complianceBannerText}, professional design, high quality typography, modern aesthetic, commercial grade, 8k resolution, masterpiece, trending on behance, clean layout`,
       negativePrompt: '低质量，模糊，违规文字，收益承诺，夸大宣传，卡通风格，廉价感，杂乱背景'
     };
   }
