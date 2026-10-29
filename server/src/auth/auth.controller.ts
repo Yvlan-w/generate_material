@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Delete, Body, Query, Param } from '@nestjs/common'
+import { Controller, Post, Get, Delete, Body, Query, Param, Req, UseGuards, ForbiddenException } from '@nestjs/common'
 import { AuthService } from './auth.service'
+import { AdminGuard, AuthGuard, AuthRequest } from './auth.guard'
 
 @Controller('auth')
 export class AuthController {
@@ -33,6 +34,7 @@ export class AuthController {
    * Body: { openid: string, role?: string }
    */
   @Post('admin/add')
+  @UseGuards(AuthGuard, AdminGuard)
   async addAdmin(@Body() body: { openid: string; role?: string }) {
     console.log('[AuthController] addAdmin called with:', body)
     
@@ -58,6 +60,7 @@ export class AuthController {
    * DELETE /api/auth/admin/remove?openid=xxx
    */
   @Delete('admin/remove')
+  @UseGuards(AuthGuard, AdminGuard)
   async removeAdmin(@Query('openid') openid: string) {
     console.log('[AuthController] removeAdmin called with openid:', openid)
     
@@ -83,6 +86,7 @@ export class AuthController {
    * GET /api/auth/admin/list
    */
   @Get('admin/list')
+  @UseGuards(AuthGuard, AdminGuard)
   async getAdminList() {
     console.log('[AuthController] getAdminList called')
     
@@ -102,9 +106,18 @@ export class AuthController {
    * GET /api/auth/user/:openid
    */
   @Get('user/:openid')
-  async getUser(@Param('openid') openid: string) {
+  @UseGuards(AuthGuard)
+  async getUser(@Param('openid') openid: string, @Req() req: AuthRequest) {
     console.log('[AuthController] getUser called with openid:', openid)
-    
+
+    const currentUser = req.user!
+    if (currentUser.openid !== openid) {
+      const isAdmin = await this.authService.checkAdminByUserId(currentUser.id)
+      if (!isAdmin) {
+        throw new ForbiddenException('无权查看其他用户信息')
+      }
+    }
+
     const user = await this.authService.getUserByOpenid(openid)
     
     if (!user) {

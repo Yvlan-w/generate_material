@@ -1553,17 +1553,18 @@ ${needsText}
   /**
    * 切换图片收藏状态
    */
-  async toggleFavorite(imageId: string) {
-    console.log('[Favorite] 切换收藏状态, imageId:', imageId);
+  async toggleFavorite(imageId: string, userId: string) {
+    console.log('[Favorite] 切换收藏状态, imageId:', imageId, 'userId:', userId);
     
     try {
       const supabase = getSupabaseClient();
       
-      // 先查询当前状态
+      // 先查询当前状态（仅允许操作本人图片）
       const { data: currentData, error: fetchError } = await supabase
         .from('generated_images')
         .select('is_favorite')
         .eq('id', imageId)
+        .eq('user_id', userId)
         .single();
       
       if (fetchError) {
@@ -1577,7 +1578,8 @@ ${needsText}
       const { error: updateError } = await supabase
         .from('generated_images')
         .update({ is_favorite: newFavoriteState })
-        .eq('id', imageId);
+        .eq('id', imageId)
+        .eq('user_id', userId);
       
       if (updateError) {
         console.error('[Favorite] 更新失败:', updateError);

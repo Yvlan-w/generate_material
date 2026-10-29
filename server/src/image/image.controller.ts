@@ -1,12 +1,14 @@
-import { Controller, Post, Get, Body, Query, Param, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Param, UseInterceptors, UploadedFile, Req, UseGuards } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ImageService } from './image.service';
+import { AuthGuard, AuthRequest } from '@/auth/auth.guard';
 
 /**
  * 图片生成Controller
  * 提供多轮对话式需求收集、合规检查、图片生成等API
  */
 @Controller('image')
+@UseGuards(AuthGuard)
 export class ImageController {
   constructor(private readonly imageService: ImageService) {}
 
@@ -34,14 +36,14 @@ export class ImageController {
       extractNeeds?: number;
       generatePrompts?: number;
     };
-  }) {
+  }, @Req() req: AuthRequest) {
     console.log('[API] Chat request:', body);
     
     const result = await this.imageService.chat(
       body.sessionId,
       body.message,
       body.stage as any,
-      body.userId,
+      req.user!.id,
       body.imageType,
       body.imageUrls,
       body.imageDetails,
@@ -79,7 +81,7 @@ export class ImageController {
    * POST /api/image/generate
    */
   @Post('generate')
-  async generateImage(@Body() body: { userInput: string; style?: string }) {
+  async generateImage(@Body() body: { userInput: string; style?: string }, @Req() req: AuthRequest) {
     console.log('[API] Generate request:', body);
     
     // 使用对话流程模拟单轮生成
@@ -87,7 +89,8 @@ export class ImageController {
     const result = await this.imageService.chat(
       sessionId,
       `${body.userInput}，风格选择：${body.style || '专业稳重'}`,
-      'collecting'
+      'collecting',
+      req.user!.id
     );
     
     return {
@@ -109,7 +112,8 @@ export class ImageController {
    * GET /api/image/list
    */
   @Get('list')
-  async getImageList(@Query('userId') userId?: string, @Query('filter') filter?: string) {
+  async getImageList(@Req() req: AuthRequest, @Query('filter') filter?: string) {
+    const userId = req.user!.id;
     console.log('[API] List request, userId:', userId, 'filter:', filter);
     
     const images = await this.imageService.getImageList(userId, filter);
@@ -128,10 +132,10 @@ export class ImageController {
    * POST /api/image/favorite
    */
   @Post('favorite')
-  async toggleFavorite(@Body() body: { imageId: string }) {
+  async toggleFavorite(@Body() body: { imageId: string }, @Req() req: AuthRequest) {
     console.log('[API] Favorite request:', body);
     
-    const result = await this.imageService.toggleFavorite(body.imageId);
+    const result = await this.imageService.toggleFavorite(body.imageId, req.user!.id);
     
     return {
       code: 200,
@@ -145,10 +149,10 @@ export class ImageController {
    * POST /api/image/clear
    */
   @Post('clear')
-  async clearUserImages(@Body() body: { userId: string }) {
-    console.log('[API] Clear images request:', body);
+  async clearUserImages(@Req() req: AuthRequest) {
+    console.log('[API] Clear images request, userId:', req.user!.id);
     
-    const result = await this.imageService.clearUserImages(body.userId);
+    const result = await this.imageService.clearUserImages(req.user!.id);
     
     return {
       code: 200,

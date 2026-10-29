@@ -2,6 +2,7 @@
 import 'dotenv/config';
 import { Injectable } from '@nestjs/common';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { JwtService } from './jwt.service';
 
 export interface UserInfo {
   id: string;
@@ -20,8 +21,18 @@ export interface AdminInfo {
 
 @Injectable()
 export class AuthService {
+  constructor(private readonly jwtService: JwtService) {}
+
   private getClient() {
     return getSupabaseClient();
+  }
+
+  /**
+   * 是否允许模拟登录（仅供本地开发调试）
+   * 必须显式设置 ALLOW_MOCK_LOGIN=true 才会开启，生产环境保持关闭
+   */
+  private isMockLoginEnabled(): boolean {
+    return process.env.ALLOW_MOCK_LOGIN === 'true';
   }
 
   /**
@@ -42,17 +53,36 @@ export class AuthService {
    * @returns { openid, session_key } 或 null
    */
   private async getWechatOpenid(code: string): Promise<{ openid: string; session_key?: string } | null> {
+    if (!code) {
+      throw new Error('缺少微信登录凭证');
+    }
+
     const { appId, secret } = this.getWechatConfig();
     
     // 判断是否为开发环境的模拟 code（H5 端无法获取真实微信凭证）
     // 模拟 code 格式：test_h5_code 或 dev_openid_xxx
     const isDevCode = code.startsWith('test_') || code.startsWith('dev_');
-    
-    // 如果是开发模式或未配置凭证，使用模拟登录
-    if (isDevCode || !appId || !secret) {
+
+    // 未配置微信凭证：仅当显式开启模拟登录时才允许
+    if (!appId || !secret) {
+      if (!this.isMockLoginEnabled()) {
+        throw new Error('服务端未配置微信登录参数，无法完成登录');
+      }
       console.log('[AuthService] 使用模拟登录模式（开发环境或未配置微信凭证）');
       return {
-        openid: isDevCode ? `dev_openid_${code.slice(0, 8)}` : `dev_openid_${code.slice(0, 8)}`,
+        openid: `dev_openid_${code.slice(0, 8)}`,
+        session_key: `dev_session_${Date.now()}`
+      };
+    }
+
+    // 模拟 code：仅当显式开启模拟登录时才允许
+    if (isDevCode) {
+      if (!this.isMockLoginEnabled()) {
+        throw new Error('登录凭证无效，请重新通过微信登录');
+      }
+      console.log('[AuthService] 使用模拟登录模式（开发环境模拟凭证）');
+      return {
+        openid: `dev_openid_${code.slice(0, 8)}`,
         session_key: `dev_session_${Date.now()}`
       };
     }
@@ -178,8 +208,8 @@ export class AuthService {
     // 查询是否为管理员（通过 user_id 查询）
     user.is_admin = await this.checkAdminByUserId(user.id);
     
-    // 生成 token（真实环境需要使用 JWT）
-    const token = `token_${user.id}_${Date.now()}`;
+    // 生成登录凭证（JWT，有效期 7 天）
+    const token = this.jwtService.sign(user.id, user.openid, user.is_admin);
     
     return { user, token };
   }
