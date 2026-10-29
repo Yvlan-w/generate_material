@@ -274,7 +274,9 @@ export default function LoginPage() {
           onClick={handleSkipAvatar}
         >
           <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#FFFFFF', fontSize: '14px', fontWeight: '500' }}>跳过</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: '14px', fontWeight: '500' }}>
+              {avatarUrl ? '下一步' : '跳过'}
+            </Text>
             <ArrowRight size={16} color="#FFFFFF" style={{ marginLeft: '4px' }} />
           </View>
         </Button>
@@ -316,21 +318,10 @@ export default function LoginPage() {
       <View style={{ marginBottom: '24px' }}>
         <Input
           type="nickname"
-          className="nickname-input"
+          className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4"
           placeholder="请输入您的昵称"
           value={nickname}
           onInput={onNicknameChange}
-          style={{
-            width: '100%',
-            height: '48px',
-            backgroundColor: '#F8FAFC',
-            borderRadius: '12px',
-            paddingLeft: '16px',
-            paddingRight: '16px',
-            fontSize: '14px',
-            border: '1px solid #E2E8F0',
-            boxSizing: 'border-box'
-          }}
         />
       </View>
 

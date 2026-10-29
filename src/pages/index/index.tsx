@@ -76,6 +76,35 @@ interface GalleryImage {
 }
 
 
+/** 选择本地图片：优先使用 chooseMedia（微信推荐），兼容旧版 chooseImage */
+const pickLocalImages = (): Promise<string[]> => {
+  return new Promise((resolve, reject) => {
+    const chooseMedia = (Taro as any).chooseMedia
+    if (typeof chooseMedia === 'function') {
+      chooseMedia({
+        count: 9,
+        mediaType: ['image'],
+        sizeType: ['compressed'],
+        sourceType: ['album', 'camera'],
+        success: (res: any) => {
+          const files = res?.tempFiles || []
+          resolve(files.map((file: any) => file.tempFilePath).filter(Boolean))
+        },
+        fail: reject
+      })
+      return
+    }
+
+    Taro.chooseImage({
+      count: 9,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: res => resolve(res.tempFilePaths || []),
+      fail: reject
+    })
+  })
+}
+
 const IndexPage = () => {
   const [currentTab, setCurrentTab] = useState<TabType>('home');
   const [userInfo, setUserInfo] = useState<any>(null);
@@ -443,49 +472,67 @@ const HomePage = ({
   };
 
   const handleImageUpload = async () => {
-    Taro.chooseImage({
-      count: 9,
-      sizeType: ['compressed'],
-      sourceType: ['album', 'camera'],
-      success: async (res) => {
-        Taro.showLoading({ title: '上传图片中...' });
-        const newImages: PendingImage[] = [];
-        for (let i = 0; i < res.tempFilePaths.length; i++) {
-          const path = res.tempFilePaths[i];
-          try {
-            const uploadResult = await Network.uploadFile({
-              url: '/api/image/upload',
-              filePath: path,
-              name: 'image'
+    let loadingShown = false
+    try {
+      const filePaths = await pickLocalImages()
+      if (filePaths.length === 0) {
+        return
+      }
+
+      Taro.showLoading({ title: '上传图片中...', mask: true })
+      loadingShown = true
+
+      const newImages: PendingImage[] = []
+      for (let i = 0; i < filePaths.length; i++) {
+        const path = filePaths[i]
+        try {
+          const uploadResult = await Network.uploadFile({
+            url: '/api/image/upload',
+            filePath: path,
+            name: 'image'
+          })
+          const responseData = typeof uploadResult.data === 'string' 
+            ? JSON.parse(uploadResult.data) 
+            : uploadResult.data;
+          if (responseData.code === 200 && responseData.data?.url) {
+            newImages.push({
+              id: `img_${Date.now()}_${i}`,
+              url: responseData.data.url,
+              imageType: undefined,
+              aspects: [],
+              customAspect: '',
+              position: '',
+              note: ''
             });
-            const responseData = typeof uploadResult.data === 'string' 
-              ? JSON.parse(uploadResult.data) 
-              : uploadResult.data;
-            if (responseData.code === 200 && responseData.data?.url) {
-              newImages.push({
-                id: `img_${Date.now()}_${i}`,
-                url: responseData.data.url,
-                imageType: undefined,
-                aspects: [],
-                customAspect: '',
-                position: '',
-                note: ''
-              });
-            } else {
-              Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
-            }
-          } catch (error) {
-            console.error('上传图片失败:', error);
-            Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
+          } else {
+            Taro.showToast({ title: responseData.msg || '图片上传失败', icon: 'error', duration: 1500 });
           }
-        }
-        Taro.hideLoading();
-        if (newImages.length > 0) {
-          setImagesToSend(prev => [...prev, ...newImages]);
-          setEditImageId(newImages[0].id);
+        } catch (error) {
+          console.error('上传图片失败:', error);
+          Taro.showToast({ title: '图片上传失败', icon: 'error', duration: 1500 });
         }
       }
-    });
+
+      if (newImages.length > 0) {
+        setImagesToSend(prev => [...prev, ...newImages]);
+        setEditImageId(newImages[0].id);
+      }
+    } catch (error: any) {
+      const errMsg = String(error?.errMsg || error?.message || '')
+      console.error('选择图片失败:', errMsg)
+      if (/cancel/i.test(errMsg)) {
+        return
+      }
+      if (/auth|authorize|permission|deny/i.test(errMsg)) {
+        Taro.showToast({ title: '未获得相册或相机权限，请在设置中开启', icon: 'none', duration: 2500 })
+        return
+      }
+      Taro.showToast({ title: '选择图片失败，请重试', icon: 'none', duration: 2000 })
+    } finally {
+      if (loadingShown) {
+        Taro.hideLoading()
+      }
+    }
   };
 
   const removePendingImage = (id: string) => {
