@@ -9,6 +9,21 @@ import { Sparkles, ShieldCheck, LoaderCircle, User, ArrowRight } from 'lucide-re
 
 type LoginStep = 'init' | 'chooseAvatar' | 'inputNickname' | 'loggingIn'
 
+/** 将后端/网络错误转换为用户可读的提示 */
+const getLoginErrorMessage = (error: any): string => {
+  const raw = String(error?.message || error || '')
+  if (/服务端未配置/.test(raw)) {
+    return '服务端登录配置异常，请联系管理员'
+  }
+  if (/40029|40163|无效|已使用|登录凭证/.test(raw)) {
+    return '微信登录凭证已失效，请重新点击登录'
+  }
+  if (/request:fail|timeout|network|网络/i.test(raw)) {
+    return '网络异常，请检查网络后重试'
+  }
+  return '登录失败，请重试'
+}
+
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState('')
@@ -19,9 +34,17 @@ export default function LoginPage() {
 
   useEffect(() => {
     const savedUserInfo = Taro.getStorageSync('userInfo')
+    const savedToken = Taro.getStorageSync('token')
+    const savedLoggedIn = Taro.getStorageSync('isLoggedIn')
+
     if (savedUserInfo) {
       setNickname(savedUserInfo.nickname || '')
       setAvatarUrl(savedUserInfo.avatar_url || '')
+    }
+
+    // 已有登录态时直接进入首页，避免每次启动都停留在登录页
+    if (savedLoggedIn && savedToken && savedUserInfo) {
+      Taro.redirectTo({ url: '/pages/index/index' })
     }
   }, [])
 
@@ -96,12 +119,14 @@ export default function LoginPage() {
 
     } catch (error: any) {
       console.error('登录失败:', error)
+      // 微信登录 code 为一次性凭证，失败后需重新获取，否则会持续失败
+      setLoginCode('')
+      setLoginStep('init')
       await Taro.showToast({
-        title: error.message || '登录失败，请重试',
+        title: getLoginErrorMessage(error),
         icon: 'error',
         duration: 2000
       })
-      setLoginStep('inputNickname')
     } finally {
       setLoading(false)
     }

@@ -138,8 +138,8 @@ export class ImageController {
     const result = await this.imageService.toggleFavorite(body.imageId, req.user!.id);
     
     return {
-      code: 200,
-      msg: 'success',
+      code: result.success === false ? 400 : 200,
+      msg: result.success === false ? '收藏操作失败' : 'success',
       data: result
     };
   }
@@ -155,8 +155,8 @@ export class ImageController {
     const result = await this.imageService.clearUserImages(req.user!.id);
     
     return {
-      code: 200,
-      msg: 'success',
+      code: result.success === false ? 400 : 200,
+      msg: result.success === false ? (result.message || '清空失败') : 'success',
       data: result
     };
   }

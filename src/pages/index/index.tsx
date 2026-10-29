@@ -122,8 +122,9 @@ const IndexPage = () => {
     }
 
     const isLoggedIn = Taro.getStorageSync('isLoggedIn');
+    const token = Taro.getStorageSync('token');
     console.log('IndexPage: isLoggedIn:', isLoggedIn);
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !token) {
       Taro.redirectTo({ url: '/pages/login/index' });
       return;
     }
@@ -1051,9 +1052,12 @@ const GalleryPage = () => {
           needs: img.prompt || img.description || '',
           isFavorite: img.isFavorite || false
         })));
+      } else {
+        Taro.showToast({ title: response.data.msg || '加载失败，请重试', icon: 'none' });
       }
     } catch (error) {
       console.error('获取图片列表失败:', error);
+      Taro.showToast({ title: '加载失败，请重试', icon: 'none' });
     } finally {
       setLoading(false);
     }
@@ -1069,12 +1073,21 @@ const GalleryPage = () => {
 
       if (response.data.code === 200) {
         const { isFavorite } = response.data.data;
-        setImages(prev => prev.map(img => 
-          img.id === imageId ? { ...img, isFavorite } : img
-        ));
+        setImages(prev => {
+          // 在收藏页取消收藏后，立即从当前列表移除
+          if (activeTab === 'favorite' && !isFavorite) {
+            return prev.filter(img => img.id !== imageId);
+          }
+          return prev.map(img => 
+            img.id === imageId ? { ...img, isFavorite } : img
+          );
+        });
+      } else {
+        Taro.showToast({ title: response.data.msg || '操作失败，请重试', icon: 'none' });
       }
     } catch (error) {
       console.error('切换收藏失败:', error);
+      Taro.showToast({ title: '网络异常，请重试', icon: 'none' });
     }
   };
 

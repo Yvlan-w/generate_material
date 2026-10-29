@@ -1523,8 +1523,7 @@ ${needsText}
       
       if (error) {
         console.error('[List] 数据库查询失败:', error);
-        // 返回空数组而不是模拟数据
-        return [];
+        throw new Error('查询图片列表失败');
       }
       
       // 格式化返回数据
@@ -1546,7 +1545,7 @@ ${needsText}
       return images;
     } catch (e) {
       console.error('[List] 查询异常:', e);
-      return [];
+      throw e;
     }
   }
 
